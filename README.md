@@ -7,10 +7,25 @@ An intelligent conversational shopping agent that navigates real-world customer 
 ## Quick Start
 
 ```bash
-# 1. Download required data
+# 1. Install dependencies (pick one LLM provider)
+uv sync --extra gemini    # Google Gemini (free)
+# OR: uv sync --extra groq  # Groq/Llama (free)
+
+# 2. Download required data
 ./data/download.sh
 
-# 2. (coming soon) Install dependencies and run evaluator
+# 3. Precompute embeddings (one-time, ~2-5 min)
+python -m src.embeddings.precompute
+
+# 4. Set your LLM API key
+export GOOGLE_API_KEY="your-key-here"
+# OR: export GROQ_API_KEY="gsk_..."
+
+# 5. Run mini evaluation (20 sessions, fast)
+./scripts/eval_mini.sh
+
+# 6. Run full evaluation (200 sessions)
+./scripts/eval_full.sh
 ```
 
 ## Documentation
@@ -28,11 +43,21 @@ An intelligent conversational shopping agent that navigates real-world customer 
 
 ```
 .
-├── data/               # Competition data (downloaded, gitignored)
-│   ├── download.sh     # Script to fetch catalog + sessions
-│   └── README.md       # Data file documentation
-├── docs/               # All challenge documentation
-└── README.md
+├── data/                    # Competition data (downloaded, gitignored)
+│   ├── download.sh          # Fetches catalog + sessions via gh CLI
+│   └── embeddings/          # Precomputed vectors (generated locally)
+├── docs/                    # Challenge documentation
+├── src/
+│   ├── agent.py             # Main Agent class (API contract implementation)
+│   ├── llm_client.py        # Provider-agnostic LLM interface (Groq/Gemini)
+│   ├── retrieval/           # BM25 + dense + hybrid RRF merge
+│   ├── ranking/             # LLM re-ranking (Yanyox)
+│   ├── dialog/              # State management, attribute selection, intent detection
+│   └── embeddings/          # Precomputation script
+├── evaluator/               # Official local evaluator
+├── scripts/                 # Eval runner scripts
+├── tasks/                   # Team task specs
+└── pyproject.toml
 ```
 
 ## Key Metrics

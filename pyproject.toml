@@ -1,0 +1,19 @@
+[project]
+name = "shopping-copilot"
+version = "0.1.0"
+description = "AI Conversational Search and Recommendations — TikTok TechJam 2026 Track 4"
+requires-python = ">=3.11"
+dependencies = [
+    "sentence-transformers>=3.0",
+    "faiss-cpu>=1.8",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+groq = ["groq>=0.9"]
+gemini = ["google-generativeai>=0.8"]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
