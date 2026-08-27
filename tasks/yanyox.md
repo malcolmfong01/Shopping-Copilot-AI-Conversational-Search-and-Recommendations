@@ -139,8 +139,13 @@ Target: push above 0.80 with LLM re-ranking and smarter attribute selection.
 ## LLM Provider
 
 The system uses `src/llm_client.py` which auto-detects your provider:
-- **Primary**: Groq Llama 3.3 70B (`GROQ_API_KEY`) — **USE THIS**. Free tier: 30 RPM, 14400 RPD.
-- **Fallback**: Google Gemini 3.6 Flash (`GOOGLE_API_KEY`) — only 20 requests/day on free tier (not enough for eval runs).
+- **Recommended**: Groq Llama 3.3 70B (`GROQ_API_KEY`) — free tier: 30 RPM, 14400 RPD.
+- **Fallback**: Google Gemini 3.6 Flash (`GOOGLE_API_KEY`) — free tier only allows ~20 requests/day, which likely won't be enough since a single mini eval needs ~40 LLM calls.
+
+**Drawbacks to be aware of:**
+- Groq's 30 RPM cap means a full 200-session eval takes ~2 hours (can't parallelise)
+- Llama 3.3 70B is weaker at structured JSON output than GPT-4 or Claude — your prompts need to be very explicit about the output format or it may return malformed JSON (the system falls back to heuristics silently when this happens)
+- If rate limited or the response is invalid, `llm_call()` returns `None` and the agent uses the fallback heuristic — you won't see an error, just no improvement in score
 
 **Get a Groq key**: Sign up at https://console.groq.com (free, instant). Set it as:
 ```bash
