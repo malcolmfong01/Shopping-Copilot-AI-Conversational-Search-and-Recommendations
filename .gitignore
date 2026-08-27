@@ -1,0 +1,39 @@
+# Data files (downloaded via data/download.sh)
+data/catalog.jsonl
+data/catalog.jsonl.gz
+data/public_set.jsonl
+data/checksums.sha256
+
+# Evaluation output
+results.json
+
+# Original PDF (extracted to docs/)
+*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
