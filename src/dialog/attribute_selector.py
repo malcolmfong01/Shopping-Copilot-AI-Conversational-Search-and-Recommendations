@@ -19,14 +19,14 @@ from src.llm_client import llm_call
 
 ATTRIBUTE_PRIORITY = [
     "category",
-    "budget",
-    "style",
-    "color",
-    "use_case",
+    "feature",
     "material",
+    "color",
+    "style",
+    "use_case",
+    "budget",
     "brand",
     "size",
-    "feature",
     "other",
 ]
 

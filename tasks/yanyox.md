@@ -1,128 +1,187 @@
-# Yanyox's Task Spec: LLM Prompt Strategy
+# LLM Prompt Strategy — Task Spec
 
-## Your Role
+## TL;DR
 
-You own the **LLM intelligence layer** — the prompts that make the agent smart. The retrieval pipeline (BM25 + vector search) feeds you candidate products; your prompts decide what to recommend and what to ask.
+We're building a conversational shopping agent that searches a 50K-product catalog through multi-turn dialog. The retrieval pipeline surfaces ~50 candidate products per turn. **Your job**: write the LLM prompts that (1) re-rank these candidates so the right product lands at #1, (2) decide which attribute to ask next to narrow the search fastest, and (3) generate natural conversational replies.
 
-## What You're Building
+The system uses **free-tier LLMs** (Google Gemini Flash or Groq/Llama 3.3 70B). No paid APIs needed.
 
-You have **3 modules** to implement. Each has a clear interface — you fill in the prompt logic.
+**What success looks like**: the target product appears in top-10 as early as possible. Score = `0.50 * hit_rate@10 + 0.30 * MRR + 0.20 * efficiency`. Baseline (no LLM, no questions asked) scores 0.107. We need to beat that significantly.
 
 ---
 
-### 1. Re-Ranking (`src/ranking/llm_ranker.py`)
+## Architecture Overview
 
-**What it does**: Takes 20 candidate products + conversation context → returns the 10 best-matching products in order.
+```
+User message → [State Update] → [Hybrid Retrieval: BM25 + Dense] → Top 50 candidates
+                                                                          ↓
+                                                              [YOUR CODE: Re-rank top 20 → best 10]
+                                                              [YOUR CODE: Pick next attribute to ask]
+                                                              [YOUR CODE: Generate reply message]
+                                                                          ↓
+                                                              Return: recommendations + ask_attribute + message
+```
 
-**Interface**:
+Every turn, the agent ALWAYS returns both recommendations AND asks one attribute. This means:
+- Turn 1: even before knowing much, we recommend our best guess AND ask a question
+- Each subsequent turn: refined recommendations + another question
+- The session ends the moment the target product appears in our top-10
+
+---
+
+## Your 3 Modules
+
+### 1. Re-Ranking (`src/ranking/llm_ranker.py` → `rank_candidates()`)
+
+**Input**: 20 candidate products + full session context
+**Output**: Ordered list of up to 10 `parent_asin` strings (best match first)
+
 ```python
 def rank_candidates(candidates: list[dict], state: SessionState) -> list[str]:
-    """
-    Args:
-        candidates: Top-20 products. Each has: parent_asin, title, categories, features, details, store, description, price
-        state: Session context with .constraints (dict), .conversation_history (list), .user_profile (dict)
-
-    Returns:
-        Ordered list of parent_asin strings (best first, max 10)
-    """
 ```
 
-**Why it matters**: This directly controls MRR (30% of score). Putting the right product at position 1 gives MRR=1.0 vs position 10 giving MRR=0.1.
+Each candidate dict has: `parent_asin`, `title`, `categories`, `features`, `details`, `store`, `description`, `price`
 
-**Current placeholder**: Just passes through retrieval order (no re-ranking).
+The `state` object gives you:
+- `state.constraints` — accumulated preferences: `{"category": "dress", "color": "black"}`
+- `state.conversation_history` — full dialog so far
+- `state.user_profile` — purchase frequency, preference tags, summary
+- `state.get_context_summary()` — pre-formatted string of recent context
 
-**Your job**: Write a prompt that:
-- Takes the user's accumulated preferences/constraints
-- Compares them against each candidate's attributes
-- Returns the best matches ordered by relevance
+**Why this matters**: MRR = 1/rank. Target at position 1 → MRR=1.0. Position 5 → MRR=0.2. Position 10 → MRR=0.1.
+
+**Current placeholder**: passes through retrieval order (no intelligence).
 
 ---
 
-### 2. Attribute Selection (`src/dialog/attribute_selector.py`)
+### 2. Attribute Selection (`src/dialog/attribute_selector.py` → `select_attribute()`)
 
-**What it does**: Decides which attribute to ask about on each turn.
+**Input**: Session state + distribution of attribute values in current candidate pool
+**Output**: One attribute string
 
-**Interface**:
 ```python
 def select_attribute(state: SessionState, candidate_stats: dict) -> str:
-    """
-    Args:
-        state: Has .attributes_asked, .constraints, .turn, .conversation_history
-        candidate_stats: Distribution of values in current pool, e.g.:
-            {"category": {"dress": 12, "shoes": 5}, "color": {"black": 8, "red": 3}}
-
-    Returns:
-        One of: "category"|"material"|"color"|"size"|"style"|"brand"|"budget"|"feature"|"use_case"|"other"
-    """
 ```
 
-**Why it matters**: Each turn you can only ask ONE question. Picking the most discriminating attribute narrows the pool fastest → better MTTC (efficiency).
+`candidate_stats` looks like:
+```python
+{
+    "category": {"dress": 12, "shoes": 5, "jacket": 3},
+    "color": {"black": 8, "red": 3, "blue": 2},
+    "budget": {"$25-50": 7, "under $25": 4, "over $100": 2}
+}
+```
 
-**Current placeholder**: Fixed priority order (category → budget → style → ...).
-
-**Your job**: Write a prompt that looks at what's known, what's not, and the candidate distribution to pick the attribute that will most reduce ambiguity.
+**Allowed return values**: `category`, `material`, `color`, `size`, `style`, `brand`, `budget`, `feature`, `use_case`, `other`
 
 **Rules**:
-- Turn 1: always ask "category" (this is hardcoded and correct — don't change it)
-- Turn 2+: LLM decides based on what's left
+- Turn 1: hardcoded to "category" (don't change this — it's correct)
+- Turn 2+: your LLM decides based on what maximally narrows the pool
+
+**Why this matters**: each turn costs efficiency. Pick the attribute that eliminates the most candidates per turn → faster convergence → better MTTC.
 
 ---
 
 ### 3. Message Generation (`src/ranking/llm_ranker.py` → `generate_message()`)
 
-**What it does**: Generates the conversational text reply to the user.
+**Input**: Session state + current recommendations + chosen attribute
+**Output**: Natural language reply (2-3 sentences max)
 
-**Interface**:
 ```python
 def generate_message(state: SessionState, recommendations: list[dict], ask_attribute: str | None) -> str:
-    """
-    Returns a natural-language reply that:
-    - Acknowledges what the user said
-    - Briefly mentions top recommendation(s)
-    - Asks about the chosen attribute naturally
-    """
 ```
 
-**Current placeholder**: Template-based ("Based on your preferences, I'd recommend X. What color do you prefer?")
-
-**Your job**: Make it conversational and natural. Keep it SHORT (2-3 sentences max) — the simulator doesn't care about length, only about `ask_attribute` and `recommendations`.
+**Requirements**: Acknowledge the user's input, briefly reference your top recommendation, naturally ask about the chosen attribute. Keep it SHORT — the simulator doesn't evaluate message quality, only `ask_attribute` and `recommendations` are scored.
 
 ---
 
-## How to Test
+## How the Simulator Works (Important)
+
+The evaluator simulates a user with a hidden target product. When you set `ask_attribute`:
+
+| What you ask | What happens |
+|---|---|
+| Valid attribute matching an undisclosed constraint | Simulator reveals it: "For that, what matters is: leather; waterproof" |
+| Valid attribute, nothing left to reveal | "I don't have an additional preference for [attribute]" |
+| `null` | "Ask me about one specific attribute" (wasted turn) |
+
+**Scenario types** (your prompts should handle all):
+- **buying** (40%): clear intent, reveals constraints readily
+- **browsing** (40%): vague preferences, broader exploration
+- **intent_override** (15%): user changes mind at turn 3-4. Constraints get flushed automatically — you just need to handle the fresh context gracefully
+- **boundary** (5%): refuses first question with "I don't have a preference" regardless of attribute
+
+---
+
+## Setup & Testing
 
 ```bash
-# Run mini eval (20 sessions, ~2-5 min)
+# Install deps
+uv sync --extra gemini
+
+# Set API key (Gemini Flash — free)
+export GOOGLE_API_KEY="<ask Malcolm for this>"
+
+# Run mini eval (20 sessions)
 ./scripts/eval_mini.sh
 
-# Check results — you're beating baseline if score > 0.107
+# Run diagnostic to understand retrieval quality
+python scripts/diagnostic.py
 ```
 
-## LLM Setup
+**Your iteration loop**: edit prompts → run mini eval → check score → repeat.
 
-We use **Groq** (free tier, Llama 3.3 70B):
-1. Get free API key at https://console.groq.com
-2. Set it: `export GROQ_API_KEY=gsk_...`
-3. The modules already call Groq — just improve the prompts
+**Current score: 0.714** (no LLM, just BM25 + heuristic attribute selection).
+Target: push above 0.80 with LLM re-ranking and smarter attribute selection.
 
-## Key Facts
+---
 
-- **Scoring**: `0.50 * hit_rate@10 + 0.30 * MRR + 0.20 * efficiency`
-- **Max 10 turns** per session
-- **Always recommend + ask** every turn (both fields filled)
-- **Allowed attributes**: category, material, color, size, style, brand, budget, feature, use_case, other
-- **Catalog**: 50K clothing products (title, categories, features, details, store, description, price)
-- **Scenarios**: buying (40%), browsing (40%), intent_override (15%), boundary (5%)
+## LLM Provider
 
-## What NOT to Touch
+The system uses `src/llm_client.py` which auto-detects your provider:
+- **Primary**: Groq Llama 3.3 70B (`GROQ_API_KEY`) — **USE THIS**. Free tier: 30 RPM, 14400 RPD.
+- **Fallback**: Google Gemini 3.6 Flash (`GOOGLE_API_KEY`) — only 20 requests/day on free tier (not enough for eval runs).
 
-- `src/retrieval/` — that's the retrieval pipeline (my domain)
-- `src/dialog/state.py` — shared state structure (coordinate with me if you need changes)
-- `evaluator/` — official eval code, don't modify
+**Get a Groq key**: Sign up at https://console.groq.com (free, instant). Set it as:
+```bash
+export GROQ_API_KEY="gsk_..."
+```
+
+You call the LLM via:
+```python
+from src.llm_client import llm_call
+response = llm_call("your prompt", max_tokens=200)
+```
+
+Keep prompts concise — shorter = faster eval iterations + lower risk of rate limiting.
+
+**Rate limit math**: 200 sessions × 10 turns × 2 calls/turn = 4000 calls max for full eval. At 30 RPM, full eval takes ~2.2 hours. Use mini eval (20 sessions) for iteration — ~40 calls per run, instant.
+
+---
+
+## Files You Own
+
+| File | What to edit |
+|------|-------------|
+| `src/ranking/llm_ranker.py` | `rank_candidates()` and `generate_message()` |
+| `src/dialog/attribute_selector.py` | `select_attribute()` (specifically `_llm_select()`) |
+
+## Files You Read But Don't Modify
+
+| File | Why |
+|------|-----|
+| `src/dialog/state.py` | Understand the `SessionState` dataclass |
+| `src/llm_client.py` | Understand how `llm_call()` works |
+| `evaluator/local_evaluator.py` | Understand how scoring works |
+| `docs/evaluation.md` | Scoring formula and scenario details |
+| `docs/agent-api-contract.md` | API contract and attribute enum |
+
+---
 
 ## Tips
 
-- The simulator reveals constraints progressively when you ask valid attributes
-- For intent_override: user changes mind at turn 3-4. The detector in `intent_detector.py` catches this and flushes constraints — you just need to handle the fresh start gracefully in your prompts
-- Keep prompts concise — Groq has rate limits on free tier. Shorter prompts = more evals per minute
-- The `state.get_context_summary()` method gives you a pre-formatted context string
+- **Study failures**: after a mini eval, look at `results_mini.json` → find sessions where `hit: false` and understand why
+- **The simulator is deterministic**: same session always reveals same constraints in same order
+- **Re-ranking has the biggest impact on MRR** (30% of score): if the target is in the 20 candidates, ranking it #1 vs #10 is the difference between MRR=1.0 and MRR=0.1
+- **Attribute selection has the biggest impact on efficiency** (20% of score): asking the right questions early means hitting the target sooner
+- **Don't over-engineer messages**: the simulator only cares about `ask_attribute` and `recommendations`. Messages are cosmetic for the demo video only.

@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from src.dialog.attribute_selector import compute_candidate_stats, select_attribute
@@ -6,8 +7,12 @@ from src.dialog.intent_detector import detect_intent_override
 from src.dialog.state import StateManager
 from src.ranking.llm_ranker import generate_message, rank_candidates
 from src.retrieval.bm25 import BM25Index
-from src.retrieval.dense import DenseIndex
 from src.retrieval.hybrid import HybridRetriever
+
+try:
+    from src.retrieval.dense import DenseIndex
+except ImportError:
+    DenseIndex = None
 
 
 class Agent:
@@ -19,10 +24,14 @@ class Agent:
         self._bm25 = BM25Index(str(self._catalog_path))
 
         embeddings_dir = self._catalog_path.parent / "embeddings"
-        self._dense = DenseIndex(
-            str(embeddings_dir / "bge_base.npy"),
-            str(embeddings_dir / "asin_index.json"),
-        )
+        embeddings_file = embeddings_dir / "bge_base.npy"
+        if DenseIndex is not None and embeddings_file.exists():
+            self._dense = DenseIndex(
+                str(embeddings_file),
+                str(embeddings_dir / "asin_index.json"),
+            )
+        else:
+            self._dense = None
 
         self._hybrid = HybridRetriever(self._bm25, self._dense, self._catalog)
 
@@ -55,10 +64,20 @@ class Agent:
 
         query = state.build_query()
 
-        candidates = self._hybrid.search(query, constraints=state.constraints, top_k=20)
+        candidates = self._hybrid.search(query, constraints=state.constraints, top_k=50)
         state.last_candidates = candidates
 
-        ranked_asins = rank_candidates(candidates, state)
+        # Pass top-20 to LLM for re-ranking; remaining 30 are fallback
+        ranked_asins = rank_candidates(candidates[:20], state)
+
+        # If LLM returned fewer than top_k, fill from remaining candidates
+        ranked_set = set(ranked_asins)
+        for c in candidates[20:]:
+            if len(ranked_asins) >= top_k:
+                break
+            if c["parent_asin"] not in ranked_set:
+                ranked_asins.append(c["parent_asin"])
+                ranked_set.add(c["parent_asin"])
 
         candidate_stats = compute_candidate_stats(candidates)
         ask_attribute = select_attribute(state, candidate_stats)
@@ -84,33 +103,66 @@ class Agent:
         }
 
     def _extract_constraints(self, state, user_message: str):
-        """Extract constraints from user message based on context.
+        msg = user_message.strip()
 
-        This is a simple heuristic — the LLM modules can do better.
-        """
-        msg_lower = user_message.lower()
+        # Pattern: "For that, what matters is: X; Y."
+        matters_match = re.search(r"what matters is:\s*(.+?)\.?$", msg, re.I)
+        if matters_match:
+            raw_values = [v.strip() for v in matters_match.group(1).split(";") if v.strip()]
+            for val in raw_values:
+                attr = self._classify_constraint(val)
+                state.add_constraint(attr, val)
+            return
 
-        if state.attributes_asked:
+        # Pattern: "I'm looking for {category}" — always extract category first
+        looking_match = re.search(r"I'm looking for\s+(.+?)(?:\.|,|$)", msg, re.I)
+        if looking_match and state.turn == 1:
+            category = looking_match.group(1).strip()
+            if category and "still exploring" not in category.lower():
+                state.add_constraint("category", category)
+
+        # Pattern: "A key requirement is: X." (buying scenarios — same message as category)
+        key_req_match = re.search(r"key requirement is:\s*(.+?)\.?$", msg, re.I)
+        if key_req_match:
+            val = key_req_match.group(1).strip()
+            attr = self._classify_constraint(val)
+            state.add_constraint(attr, val)
+            return
+
+        # If we already extracted category above, we're done for turn 1
+        if looking_match and state.turn == 1:
+            return
+
+        # Pattern: "What I need is: X." (intent override)
+        need_match = re.search(r"what I need is:\s*(.+?)\.?$", msg, re.I)
+        if need_match:
+            val = need_match.group(1).strip()
+            attr = self._classify_constraint(val)
+            state.add_constraint(attr, val)
+            return
+
+        # Skip negative/empty responses
+        if "don't have" in msg.lower() or "no preference" in msg.lower() or "not quite right" in msg.lower():
+            return
+
+        # Fallback: if we asked something and got a meaningful response, store it
+        if state.attributes_asked and len(msg) > 3:
             last_asked = state.attributes_asked[-1]
-            if last_asked == "category":
-                for keyword in ["dress", "shoes", "shirt", "pants", "jacket", "bag", "hat", "skirt", "sweater", "boots"]:
-                    if keyword in msg_lower:
-                        state.add_constraint("category", keyword)
-                        break
-            elif last_asked == "color":
-                for color in ["black", "white", "red", "blue", "green", "pink", "brown", "grey", "navy", "beige", "purple", "yellow", "orange"]:
-                    if color in msg_lower:
-                        state.add_constraint("color", color)
-                        break
-            elif last_asked == "budget":
-                import re
-                price_match = re.search(r"\$?(\d+)", msg_lower)
-                if price_match:
-                    state.add_constraint("budget", price_match.group(0))
-                elif "cheap" in msg_lower or "affordable" in msg_lower:
-                    state.add_constraint("budget", "under $30")
-                elif "expensive" in msg_lower or "premium" in msg_lower or "luxury" in msg_lower:
-                    state.add_constraint("budget", "over $100")
-            else:
-                if len(user_message.strip()) > 2 and "don't" not in msg_lower and "no preference" not in msg_lower:
-                    state.add_constraint(last_asked, user_message.strip())
+            state.add_constraint(last_asked, msg)
+
+    @staticmethod
+    def _classify_constraint(value: str) -> str:
+        lowered = value.lower()
+        if "budget" in lowered or re.search(r"(?:\$|under|around)\s*\d", lowered):
+            return "budget"
+        if any(m in lowered for m in ("cotton", "polyester", "nylon", "leather", "wool", "spandex", "silk", "rayon", "fabric")):
+            return "material"
+        if any(c in lowered for c in ("color", "black", "white", "blue", "red", "pink", "green", "brown", "gray", "grey", "purple", "yellow", "orange")):
+            return "color"
+        if any(s in lowered for s in ("size", "sizing", "width", "wide", "narrow")):
+            return "size"
+        if any(s in lowered for s in ("department", "style", "fit", "sleeve", "neck", "casual", "formal")):
+            return "style"
+        if any(u in lowered for u in ("hiking", "running", "gym", "winter", "outdoor", "work", "travel", "sport")):
+            return "use_case"
+        return "feature"

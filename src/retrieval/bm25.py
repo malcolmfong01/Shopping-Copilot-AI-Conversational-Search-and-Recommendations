@@ -14,7 +14,7 @@ STOPWORDS = frozenset(
     "such no nor not only own same so than too very s t can will just don should now".split()
 )
 
-BM25_WEIGHTS = (0.0, 6.0, 4.0, 2.5, 2.5, 1.5, 1.0)
+BM25_WEIGHTS = (6.0, 4.0, 2.5, 2.5, 1.5, 1.0)
 
 
 class BM25Index:

@@ -1,13 +1,13 @@
-"""Provider-agnostic LLM client. Supports Groq (free) and Google Gemini (free).
+"""Provider-agnostic LLM client. Supports Google Gemini (free) and Groq (free).
 
 Usage:
     from src.llm_client import llm_call
 
     response = llm_call("Your prompt here", max_tokens=200)
 
-Set one of these environment variables:
-    GROQ_API_KEY=gsk_...       (Groq free tier: Llama 3.3 70B)
-    GOOGLE_API_KEY=...         (Google Gemini Flash free tier)
+Set one of these environment variables (checked in this order):
+    GOOGLE_API_KEY=...         (Google Gemini Flash — primary, higher rate limits)
+    GROQ_API_KEY=gsk_...       (Groq Llama 3.3 70B — fallback)
 
 If neither is set, returns None (modules fall back to heuristics).
 """
@@ -46,7 +46,7 @@ def _gemini_call(prompt: str, max_tokens: int, temperature: float, api_key: str)
     try:
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-3.6-flash")
         response = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(

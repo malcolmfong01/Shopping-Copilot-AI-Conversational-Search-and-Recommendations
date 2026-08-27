@@ -1,5 +1,11 @@
+from __future__ import annotations
+
 from src.retrieval.bm25 import BM25Index
-from src.retrieval.dense import DenseIndex
+
+try:
+    from src.retrieval.dense import DenseIndex
+except ImportError:
+    DenseIndex = None
 
 RRF_K = 60
 
@@ -18,7 +24,7 @@ def reciprocal_rank_fusion(
 
 
 class HybridRetriever:
-    def __init__(self, bm25: BM25Index, dense: DenseIndex, catalog: dict[str, dict]):
+    def __init__(self, bm25: BM25Index, dense: DenseIndex | None, catalog: dict[str, dict]):
         self._bm25 = bm25
         self._dense = dense
         self._catalog = catalog
@@ -27,14 +33,17 @@ class HybridRetriever:
         self,
         query: str,
         constraints: dict[str, str] | None = None,
-        top_k: int = 20,
+        top_k: int = 50,
     ) -> list[dict]:
-        retrieval_k = top_k * 5
+        retrieval_k = top_k * 3
 
         bm25_results = self._bm25.search(query, top_k=retrieval_k)
-        dense_results = self._dense.search(query, top_k=retrieval_k)
 
-        merged_asins = reciprocal_rank_fusion(bm25_results, dense_results, top_k=retrieval_k)
+        if self._dense:
+            dense_results = self._dense.search(query, top_k=retrieval_k)
+            merged_asins = reciprocal_rank_fusion(bm25_results, dense_results, top_k=retrieval_k)
+        else:
+            merged_asins = [asin for asin, _ in bm25_results]
 
         if constraints:
             merged_asins = self._apply_constraints(merged_asins, constraints)
@@ -46,6 +55,8 @@ class HybridRetriever:
         return results
 
     def _apply_constraints(self, asins: list[str], constraints: dict[str, str]) -> list[str]:
+        if not constraints:
+            return asins
         filtered = []
         for asin in asins:
             product = self._catalog.get(asin)

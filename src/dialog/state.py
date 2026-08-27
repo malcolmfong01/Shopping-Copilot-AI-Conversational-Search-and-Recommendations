@@ -29,19 +29,27 @@ class SessionState:
         self.constraints[attribute] = value
 
     def flush_constraints(self):
+        category = self.constraints.get("category")
         self.constraints = {}
-        self.attributes_asked = []
+        if category:
+            self.constraints["category"] = category
+        self.attributes_asked = [a for a in self.attributes_asked if a == "category"]
 
     def build_query(self) -> str:
+        import re
         parts = []
-        if self.conversation_history:
-            last_msg = self.conversation_history[-1]["content"]
-            parts.append(last_msg)
         for attr, val in self.constraints.items():
-            parts.append(f"{attr}: {val}")
-        profile_tags = self.user_profile.get("preference_tags", [])
-        if profile_tags and self.turn <= 2:
-            parts.extend(profile_tags[:3])
+            cleaned = re.sub(r"^(color|material|budget|size|style|brand):\s*", "", val, flags=re.I)
+            if attr == "budget":
+                continue
+            if attr == "category":
+                # Use only the last meaningful word (most specific)
+                words = cleaned.split()
+                parts.append(" ".join(words[-2:]) if len(words) > 2 else cleaned)
+            else:
+                parts.append(cleaned)
+        if not parts and self.conversation_history:
+            parts.append(self.conversation_history[-1]["content"])
         return " ".join(parts)
 
     def get_unasked_attributes(self) -> list[str]:

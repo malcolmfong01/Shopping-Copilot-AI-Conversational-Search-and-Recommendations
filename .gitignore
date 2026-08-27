@@ -5,8 +5,8 @@ data/public_set.jsonl
 data/checksums.sha256
 
 # Evaluation output
-results.json
-results_mini.json
+results/
+results*.json
 
 # Precomputed embeddings
 data/embeddings/
