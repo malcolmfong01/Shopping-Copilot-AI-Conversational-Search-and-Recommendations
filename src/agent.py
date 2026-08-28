@@ -24,7 +24,7 @@ class Agent:
         self._bm25 = BM25Index(str(self._catalog_path))
 
         embeddings_dir = self._catalog_path.parent / "embeddings"
-        embeddings_file = embeddings_dir / "bge_base.npy"
+        embeddings_file = embeddings_dir / "minilm.npy"
         if DenseIndex is not None and embeddings_file.exists():
             self._dense = DenseIndex(
                 str(embeddings_file),
@@ -111,7 +111,8 @@ class Agent:
             raw_values = [v.strip() for v in matters_match.group(1).split(";") if v.strip()]
             for val in raw_values:
                 attr = self._classify_constraint(val)
-                state.add_constraint(attr, val)
+                cleaned = re.sub(r"^(color|material|budget|size|style|brand|feature):\s*", "", val, flags=re.I)
+                state.add_constraint(attr, cleaned, accumulate=True)
             return
 
         # Pattern: "I'm looking for {category}" — always extract category first
@@ -129,16 +130,21 @@ class Agent:
             state.add_constraint(attr, val)
             return
 
-        # If we already extracted category above, we're done for turn 1
+        # Extract trailing text after category sentence (e.g. preferences stated on turn 1)
         if looking_match and state.turn == 1:
+            end_pos = looking_match.end()
+            trailing = msg[end_pos:].strip().strip(".")
+            if trailing and len(trailing) > 3 and "still exploring" not in trailing.lower():
+                attr = self._classify_constraint(trailing)
+                state.add_constraint(attr, trailing)
             return
 
-        # Pattern: "What I need is: X." (intent override)
+        # Pattern: "What I need is: X." (intent override — accumulate, don't overwrite)
         need_match = re.search(r"what I need is:\s*(.+?)\.?$", msg, re.I)
         if need_match:
             val = need_match.group(1).strip()
             attr = self._classify_constraint(val)
-            state.add_constraint(attr, val)
+            state.add_constraint(attr, val, accumulate=True)
             return
 
         # Skip negative/empty responses

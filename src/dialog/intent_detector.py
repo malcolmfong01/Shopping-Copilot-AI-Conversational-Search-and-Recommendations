@@ -37,4 +37,4 @@ def detect_intent_override(state: SessionState, user_message: str) -> bool:
         if any(pat in msg_lower for pat in negation_patterns):
             return True
 
-    return has_signal
+    return False

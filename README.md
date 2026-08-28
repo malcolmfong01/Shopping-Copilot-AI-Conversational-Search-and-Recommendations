@@ -6,98 +6,16 @@ TikTok TechJam 2026 — Track 4
 
 ## Current Status
 
-| Metric | Baseline (starter) | Current (no LLM) | Target (with LLM) |
-|--------|-------------------|-------------------|-------------------|
-| Hit Rate@10 | 12.5% | **84%** | 90%+ |
-| MRR | 0.068 | **0.545** | 0.70+ |
-| MTTC | 9.81 turns | **4.48 turns** | 3.5 |
-| **Composite Score** | **0.107** | **0.714** | **0.80+** |
+| Metric | Baseline | Current (no LLM) | Target (with LLM) |
+|--------|----------|-------------------|-------------------|
+| Hit Rate@10 | 12.5% | **90.5%** | 95%+ |
+| MRR | 0.068 | **0.637** | 0.80+ |
+| MTTC | 9.81 turns | **3.93 turns** | 3.0 |
+| **Composite Score** | **0.107** | **0.853** | **0.90+** |
 
 Scoring: `0.50 * hit_rate@10 + 0.30 * MRR + 0.20 * efficiency`
 
-The retrieval pipeline alone (BM25, no LLM, heuristic attribute selection) scores **6.7x the baseline**. The remaining headroom is in **MRR** — that's where LLM re-ranking will have the biggest impact.
-
----
-
-## What's Been Done (Malcolm)
-
-1. **BM25 retrieval** (SQLite FTS5) with tuned column weights
-2. **Constraint extraction** — parses all evaluator response formats ("For that, what matters is: X; Y.", "A key requirement is: X.", etc.)
-3. **Query construction** — strips noise prefixes, uses specific category terms, skips budget from BM25 queries
-4. **Attribute priority** — asking "feature" early (turn 2) is the single biggest efficiency win. Features like "waterproof", "RFID blocking" are extremely discriminating for BM25.
-5. **Intent override handling** — flushes preferences but preserves category on mind-change
-6. **Optional dense retrieval** — system runs without faiss/PyTorch (graceful fallback)
-7. **Full evaluator integration** — runs end-to-end, outputs to `results/`
-
----
-
-## What Yanyox Needs To Do
-
-**Full spec: [`tasks/yanyox.md`](tasks/yanyox.md)**
-
-### Summary
-
-You own 3 functions that use the LLM to improve the score:
-
-| Function | File | Impact |
-|----------|------|--------|
-| `rank_candidates()` | `src/ranking/llm_ranker.py` | MRR (30% of score) |
-| `select_attribute()` | `src/dialog/attribute_selector.py` | Efficiency (20% of score) |
-| `generate_message()` | `src/ranking/llm_ranker.py` | Demo only (not scored) |
-
-### The Big Win: Re-Ranking
-
-Right now the agent returns products in BM25 retrieval order. MRR = 0.545 means the target lands around position 2-3 on average. If your re-ranker can push it to #1 consistently, MRR jumps to 0.7+, which alone adds ~0.05 to the composite score.
-
-You get 20 candidates with full metadata (title, categories, features, details, price) + the user's accumulated preferences. Just rank them.
-
-### Setup
-
-```bash
-# 1. Install deps
-uv sync --extra groq
-
-# 2. Get a free Groq API key (instant signup)
-#    https://console.groq.com
-export GROQ_API_KEY="gsk_..."
-
-# 3. Run mini eval (20 sessions, ~40 LLM calls, fast)
-.venv/bin/python -c "
-import json
-from evaluator.local_evaluator import evaluate, catalog_index, load_jsonl
-from src.agent import Agent
-
-samples = load_jsonl('data/public_set.jsonl')[:20]
-catalog_ids, categories, products = catalog_index('data/catalog.jsonl')
-agent = Agent('data/catalog.jsonl')
-result = evaluate(agent, samples, catalog_ids, categories, products)
-print(json.dumps({k: v for k, v in result.items() if k != 'sessions'}, indent=2))
-"
-
-# 4. Run full eval (200 sessions)
-.venv/bin/python -m evaluator.local_evaluator
-```
-
-### Rate Limits
-
-- **Groq** (recommended): 30 RPM, 14400 requests/day. Mini eval = instant. Full eval = ~2 hours.
-- **Gemini 3.6 Flash**: Only 20 requests/day on free tier. Not enough for eval runs.
-
-### Iteration Loop
-
-1. Edit prompts in `src/ranking/llm_ranker.py` or `src/dialog/attribute_selector.py`
-2. Run mini eval (20 sessions)
-3. Check score — compare to baseline 0.714 (no LLM)
-4. If score improves, run full eval to confirm
-5. Repeat
-
-### Tips
-
-- Study failures: check `results/latest.json` for sessions where `"hit": false`
-- Re-ranking has 2x the weight of attribute selection (30% vs 20% of score)
-- Keep prompts short — less tokens = faster iterations + less rate limiting
-- The simulator is deterministic — same session always responds the same way
-- `generate_message()` is cosmetic only (for the demo video). Don't spend time here until ranking works.
+The retrieval pipeline alone (BM25 + soft scoring + constraint accumulation, no LLM) scores **8.0x the baseline**. The remaining headroom is in MRR — that's where LLM re-ranking will have the biggest impact.
 
 ---
 
@@ -107,21 +25,59 @@ print(json.dumps({k: v for k, v in result.items() if k != 'sessions'}, indent=2)
 User message
     ↓
 [Constraint Extraction] — parses "what matters is:", "key requirement:", etc.
+    ↓                      Supports pipe-separated accumulation (color|size)
+[Build Query] — clean terms from constraints, skip budget/noise
     ↓
-[Build Query] — clean terms from constraints (no noise)
+[Hybrid Retrieval: BM25 + Dense (optional)]
+    ↓  BM25: SQLite FTS5, k=200
+    ↓  Dense: MiniLM-L6-v2 + FAISS (when available)
+    ↓  RRF fusion (K=60)
     ↓
-[BM25 Retrieval] — top 150, then constraint filter → 50 candidates
+[Soft Constraint Ranking] — score by fraction matched, interleave partials
+    ↓  → 50 candidates
     ↓
-[YOUR CODE: rank_candidates()] — LLM picks best 10 from top 20
+[rank_candidates()] — LLM re-ranks top 20 → best 10
     ↓
-[YOUR CODE: select_attribute()] — LLM picks most discriminating attribute
+[select_attribute()] — picks most discriminating attribute to ask
     ↓
-[YOUR CODE: generate_message()] — conversational reply
+[generate_message()] — conversational reply
     ↓
 Return: {recommendations, ask_attribute, message}
 ```
 
-Every turn ALWAYS returns both recommendations AND asks one attribute. The evaluator ends the session the moment the target appears in top-10.
+---
+
+## Team Split
+
+| Owner | Scope | Files |
+|-------|-------|-------|
+| Malcolm | Retrieval pipeline, constraint extraction, eval harness | `src/agent.py`, `src/retrieval/`, `src/dialog/state.py`, `src/dialog/intent_detector.py` |
+| Yanyox | LLM re-ranking, attribute selection, message gen | `src/ranking/llm_ranker.py`, `src/dialog/attribute_selector.py` |
+
+---
+
+## Prerequisites
+
+- Python 3.11 or 3.12 (3.14 breaks PyTorch; 3.10 and below untested)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) for dependency management
+- [GitHub CLI](https://cli.github.com/) (`gh`) for data download
+
+## Quick Start
+
+```bash
+# Download competition data (~500MB)
+bash data/download.sh
+
+# Install deps and create venv
+uv sync
+
+# Run full eval (200 sessions, no LLM needed, ~2 min)
+.venv/bin/python -m evaluator.local_evaluator
+
+# For LLM features (Yanyox)
+uv sync --extra groq
+export GROQ_API_KEY="gsk_..."
+```
 
 ---
 
@@ -131,14 +87,21 @@ Every turn ALWAYS returns both recommendations AND asks one attribute. The evalu
 .
 ├── data/                    # Competition data (downloaded, gitignored)
 │   ├── download.sh
-│   └── embeddings/          # Precomputed vectors (Day 2)
-├── docs/                    # Challenge documentation
+│   └── embeddings/          # Precomputed vectors (gitignored)
+├── docs/
+│   ├── experiments.md       # What was tried, scores, kept/reverted
+│   ├── evaluation.md        # Scoring formula and scenarios
+│   ├── agent-api-contract.md
+│   ├── data-guide.md
+│   ├── problem-statement.md
+│   ├── deliverables.md
+│   └── resources.md
 ├── evaluator/               # Official local evaluator
 ├── results/                 # Eval output (gitignored)
-├── scripts/                 # Diagnostic + eval runners
+├── scripts/                 # Diagnostic + eval helpers
 ├── src/
-│   ├── agent.py             # Main Agent class
-│   ├── llm_client.py        # Groq (primary) / Gemini (fallback)
+│   ├── agent.py             # Main Agent class + constraint extraction
+│   ├── llm_client.py        # Groq / Gemini client
 │   ├── dialog/
 │   │   ├── state.py         # Session state + query builder
 │   │   ├── attribute_selector.py  # [YANYOX] select_attribute()
@@ -147,10 +110,10 @@ Every turn ALWAYS returns both recommendations AND asks one attribute. The evalu
 │   │   └── llm_ranker.py    # [YANYOX] rank_candidates() + generate_message()
 │   ├── retrieval/
 │   │   ├── bm25.py          # SQLite FTS5
-│   │   ├── dense.py         # FAISS (optional, Day 2)
-│   │   └── hybrid.py        # RRF merge + constraint filtering
+│   │   ├── dense.py         # FAISS + MiniLM (optional)
+│   │   └── hybrid.py        # RRF merge + soft constraint scoring
 │   └── embeddings/
-│       └── precompute.py    # BGE embedding generation (Day 2)
+│       └── precompute.py    # MiniLM-L6-v2 embedding generation
 ├── tasks/
 │   └── yanyox.md            # Full task spec for Yanyox
 └── pyproject.toml
@@ -158,13 +121,39 @@ Every turn ALWAYS returns both recommendations AND asks one attribute. The evalu
 
 ---
 
+## Limitations & Future Work
+
+- **Remaining misses are semantically ambiguous:** ~6 sessions have ultra-generic constraints ("polyester + Imported + Button closure") matching 40+ products. Pure text retrieval can't distinguish between them — LLM semantic understanding is needed.
+- **Dense retrieval untested:** Embeddings are precomputed and code is wired up, but eval hasn't been run yet due to PyTorch/macOS compatibility issues. Expected to help with the remaining BM25-unfindable products.
+- **No user profile utilization:** The `user_profile` field (preference tags, purchase frequency) is available but currently unused. Could inform initial retrieval before any questions are asked.
+- **Rate limit ceiling:** Groq's 30 RPM free tier means full eval takes ~2 hours. A paid tier or local model would enable faster iteration on LLM prompts.
+
+## Team Contributions
+
+| Member | Contribution |
+|--------|-------------|
+| Malcolm | Retrieval pipeline (BM25, dense, hybrid RRF), constraint extraction, soft scoring, evaluator integration, documentation |
+| Yanyox | LLM re-ranking prompts, attribute selection strategy, message generation |
+
+---
+
+## Submission Checklist
+
+- [ ] Final score above 0.90 on full eval
+- [ ] Demo video uploaded to YouTube (walkthrough showing conversational flow)
+- [ ] Devpost submission with project description
+- [ ] Code pushed to public GitHub repo
+
+---
+
 ## Documentation
 
 | Doc | Description |
 |-----|-------------|
+| [docs/experiments.md](docs/experiments.md) | Optimization log: what was tried, scores, outcomes |
 | [docs/problem-statement.md](docs/problem-statement.md) | Full challenge description |
 | [docs/evaluation.md](docs/evaluation.md) | Scoring formula, metrics, scenarios |
 | [docs/agent-api-contract.md](docs/agent-api-contract.md) | Agent interface and schemas |
 | [docs/data-guide.md](docs/data-guide.md) | Catalog/session schemas, simulator behavior |
 | [docs/deliverables.md](docs/deliverables.md) | Submission requirements |
-| [docs/resources.md](docs/resources.md) | Links and references |
+| [tasks/yanyox.md](tasks/yanyox.md) | Yanyox's LLM task spec |
