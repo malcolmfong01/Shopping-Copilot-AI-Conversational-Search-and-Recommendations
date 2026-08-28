@@ -134,12 +134,12 @@ class Agent:
         if looking_match and state.turn == 1:
             return
 
-        # Pattern: "What I need is: X." (intent override)
+        # Pattern: "What I need is: X." (intent override — accumulate, don't overwrite)
         need_match = re.search(r"what I need is:\s*(.+?)\.?$", msg, re.I)
         if need_match:
             val = need_match.group(1).strip()
             attr = self._classify_constraint(val)
-            state.add_constraint(attr, val)
+            state.add_constraint(attr, val, accumulate=True)
             return
 
         # Skip negative/empty responses
