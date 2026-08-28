@@ -130,8 +130,13 @@ class Agent:
             state.add_constraint(attr, val)
             return
 
-        # If we already extracted category above, we're done for turn 1
+        # Extract trailing text after category sentence (e.g. preferences stated on turn 1)
         if looking_match and state.turn == 1:
+            end_pos = looking_match.end()
+            trailing = msg[end_pos:].strip().strip(".")
+            if trailing and len(trailing) > 3 and "still exploring" not in trailing.lower():
+                attr = self._classify_constraint(trailing)
+                state.add_constraint(attr, trailing)
             return
 
         # Pattern: "What I need is: X." (intent override — accumulate, don't overwrite)
