@@ -13,8 +13,8 @@ from pathlib import Path
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-MODEL_NAME = "BAAI/bge-base-en-v1.5"
-BATCH_SIZE = 256
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+BATCH_SIZE = 512
 
 
 def build_searchable_text(product: dict) -> str:
@@ -63,7 +63,7 @@ def main():
     print(f"Encoding {len(texts)} products (batch_size={BATCH_SIZE})...")
     embeddings = model.encode(texts, batch_size=BATCH_SIZE, show_progress_bar=True, normalize_embeddings=True)
 
-    embeddings_path = output_dir / "bge_base.npy"
+    embeddings_path = output_dir / "minilm.npy"
     np.save(str(embeddings_path), embeddings.astype(np.float32))
     print(f"Saved embeddings: {embeddings_path} ({embeddings.shape})")
 

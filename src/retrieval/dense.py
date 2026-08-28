@@ -4,7 +4,7 @@ import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-MODEL_NAME = "BAAI/bge-base-en-v1.5"
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
 class DenseIndex:
