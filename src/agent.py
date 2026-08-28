@@ -111,7 +111,8 @@ class Agent:
             raw_values = [v.strip() for v in matters_match.group(1).split(";") if v.strip()]
             for val in raw_values:
                 attr = self._classify_constraint(val)
-                state.add_constraint(attr, val)
+                cleaned = re.sub(r"^(color|material|budget|size|style|brand|feature):\s*", "", val, flags=re.I)
+                state.add_constraint(attr, cleaned)
             return
 
         # Pattern: "I'm looking for {category}" — always extract category first
