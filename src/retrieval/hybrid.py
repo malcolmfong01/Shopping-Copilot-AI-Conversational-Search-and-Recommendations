@@ -82,9 +82,13 @@ class HybridRetriever:
         if not constraints:
             return asins
 
+        n_constraints = sum(1 for v in constraints.values() if v and v != "budget")
+        near_threshold = (n_constraints - 1) / n_constraints if n_constraints > 1 else 0.5
+
         filtered = []
         scored_fallback = []
-        for asin in asins:
+        high_bm25_partial = []
+        for rank, asin in enumerate(asins):
             product = self._catalog.get(asin)
             if not product:
                 continue
@@ -93,6 +97,8 @@ class HybridRetriever:
             else:
                 score = self._partial_score(product, constraints)
                 scored_fallback.append((asin, score))
+                if rank < 10 and score >= near_threshold:
+                    high_bm25_partial.append(asin)
 
         if not filtered:
             scored_fallback.sort(key=lambda x: x[1], reverse=True)
@@ -102,7 +108,18 @@ class HybridRetriever:
         top_partial = [asin for asin, s in scored_fallback[:20] if s > 0]
         filtered_set = set(filtered)
         extras = [a for a in top_partial if a not in filtered_set]
-        return filtered + extras
+
+        result = filtered[:8]
+        for a in high_bm25_partial:
+            if a not in set(result):
+                result.append(a)
+        for a in filtered[8:]:
+            if a not in set(result):
+                result.append(a)
+        for a in extras:
+            if a not in set(result):
+                result.append(a)
+        return result
 
     def _matches_all(self, product: dict, constraints: dict[str, str]) -> bool:
         searchable = self._searchable_text(product)
