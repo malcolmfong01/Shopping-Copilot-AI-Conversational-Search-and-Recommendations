@@ -123,7 +123,7 @@ class HybridRetriever:
     def _partial_score(self, product: dict, constraints: dict[str, str]) -> float:
         if not constraints:
             return 1.0
-        searchable = self._searchable_text(product)
+        searchable = self._full_searchable_text(product)
         searchable_tokens = _tokenize(searchable)
         matched = 0
         total = 0
@@ -153,3 +153,14 @@ class HybridRetriever:
             f"{' '.join(product.get('features', []) if isinstance(product.get('features'), list) else [])} "
             f"{product.get('store', '')}"
         ).lower()
+
+    def _full_searchable_text(self, product: dict) -> str:
+        parts = [
+            product.get("title", ""),
+            " ".join(product.get("categories", [])),
+            " ".join(product.get("features", []) if isinstance(product.get("features"), list) else []),
+            product.get("store", "") or "",
+        ]
+        if isinstance(product.get("details"), dict):
+            parts.append(" ".join(f"{k} {v}" for k, v in product["details"].items()))
+        return " ".join(parts).lower()
