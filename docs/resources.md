@@ -19,41 +19,21 @@
 
 ---
 
-## Strategic Insights
+## Key Design Insights (Learned During Development)
 
-### 1. The baseline's critical weakness is not asking questions
+### Already implemented (retrieval pipeline)
 
-The BM25 starter always sets `ask_attribute: null`, so the simulator never reveals constraints. Simply asking the right attribute each turn will massively outperform it.
+| Insight | Status |
+|---------|--------|
+| Asking attributes each turn is critical (baseline never asks → 0.107) | Done — heuristic priority order |
+| "feature" is the most discriminating attribute to ask early | Done — asked on turn 2 |
+| Hard constraint filtering kills recall; soft scoring preserves it | Done — partial match scoring |
+| Multiple values for same attribute need accumulation, not overwrite | Done — pipe-separated storage |
+| Intent override requires flushing state while preserving category | Done — `flush_constraints()` |
 
-### 2. Attribute selection strategy is the highest-leverage decision
+### Remaining opportunities (LLM layer)
 
-Each turn you can only ask ONE attribute. Choosing the most discriminating attribute (the one that most narrows the candidate set) is key to efficiency (MTTC).
-
-### 3. Hit Rate dominates the score (50% weight)
-
-Getting the right product into top-10 at all matters more than ranking it #1 (MRR at 30%) or getting there fast (efficiency at 20%). Optimize for recall first.
-
-### 4. The 10-turn limit creates strategic pressure
-
-With max 10 turns and MTTC penalizing slow convergence, the agent must balance:
-- Asking enough questions to narrow the field (reduces candidate pool)
-- Not asking too many questions before recommending (wastes turns)
-
-### 5. Intent override is the hardest scenario
-
-At turn 3-4, the user completely changes what they want. The agent must:
-- Detect the shift (new constraints don't match old ones)
-- Flush accumulated state
-- Re-start retrieval with new intent
-
-### 6. Order of recommendations matters
-
-MRR scores 1/rank — putting the target at position 1 gives MRR=1.0 vs position 10 giving MRR=0.1. The LLM re-ranking stage should push the most likely match to the top.
-
-### 7. Only first 10 unique valid ASINs are scored
-
-Even though you can send up to 100 recommendations, only the first 10 unique ones in the catalog count. Don't waste those slots on invalid ASINs or duplicates.
-
-### 8. User profile is available but the baseline ignores it
-
-The `user_profile` contains `preference_tags` and `summary` that can inform initial retrieval before any questions are asked. This is free signal.
+1. **MRR is the biggest remaining lever.** Current MRR=0.637 means the target lands around position 2-3 on average. LLM re-ranking to push it to #1 consistently would add ~0.05-0.10 to composite.
+2. **Attribute selection can be smarter.** The heuristic priority order works well but an LLM analyzing candidate distributions could pick more optimal attributes per session.
+3. **User profile is unused.** `preference_tags` and `summary` are available but currently ignored. Could inform re-ranking or initial retrieval.
+4. **Only first 10 unique valid ASINs are scored.** Don't waste top-10 slots on low-confidence picks — better to be precise than pad the list.

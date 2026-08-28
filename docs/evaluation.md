@@ -70,8 +70,12 @@ The 200 public development sessions are distributed as:
 ## Running the Evaluator
 
 ```bash
-python -m evaluator.local_evaluator \
+# Full eval (200 sessions, outputs to results/latest.json)
+.venv/bin/python -m evaluator.local_evaluator
+
+# With explicit paths (defaults shown)
+.venv/bin/python -m evaluator.local_evaluator \
   --catalog data/catalog.jsonl \
   --dataset data/public_set.jsonl \
-  --output results.json
+  --output results/latest.json
 ```

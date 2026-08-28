@@ -5,12 +5,12 @@ Interface contract:
 - Returns an ordered list of parent_asins (best first, max 10)
 - generate_message() produces a conversational reply
 
-The current implementation is a placeholder that passes through retrieval order.
-Yanyox replaces the prompt logic to improve ranking quality.
+rank_candidates() calls the LLM with candidate descriptions + user context,
+falls back to retrieval order if LLM is unavailable or returns invalid JSON.
+generate_message() uses template strings (cosmetic only, not scored).
 """
 
 import json
-import os
 
 from src.dialog.state import SessionState
 from src.llm_client import llm_call
