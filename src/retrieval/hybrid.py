@@ -133,7 +133,8 @@ class HybridRetriever:
                     if not price or not (budget_range[0] <= price <= budget_range[1]):
                         return False
                 continue
-            if value.lower() not in searchable:
+            parts = value.split("|") if "|" in value else [value]
+            if not all(p.lower() in searchable for p in parts):
                 return False
         return True
 
@@ -147,20 +148,23 @@ class HybridRetriever:
         for attr, value in constraints.items():
             if not value:
                 continue
-            total += 1
             if attr == "budget":
+                total += 1
                 budget_range = _parse_budget(value)
                 if budget_range:
                     price = product.get("price")
                     if price and budget_range[0] <= price <= budget_range[1]:
                         matched += 1
                 continue
-            if value.lower() in searchable:
-                matched += 1
-            else:
-                value_tokens = _tokenize(value)
-                if value_tokens and len(value_tokens & searchable_tokens) / len(value_tokens) >= 0.8:
+            parts = value.split("|") if "|" in value else [value]
+            for part in parts:
+                total += 1
+                if part.lower() in searchable:
                     matched += 1
+                else:
+                    part_tokens = _tokenize(part)
+                    if part_tokens and len(part_tokens & searchable_tokens) / len(part_tokens) >= 0.8:
+                        matched += 1
         return matched / total if total else 1.0
 
     def _searchable_text(self, product: dict) -> str:

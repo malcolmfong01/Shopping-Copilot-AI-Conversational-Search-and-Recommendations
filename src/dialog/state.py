@@ -25,8 +25,13 @@ class SessionState:
         if ask_attribute and ask_attribute in ALLOWED_ATTRIBUTES:
             self.attributes_asked.append(ask_attribute)
 
-    def add_constraint(self, attribute: str, value: str):
-        self.constraints[attribute] = value
+    def add_constraint(self, attribute: str, value: str, accumulate: bool = False):
+        if accumulate and attribute in self.constraints:
+            existing = self.constraints[attribute]
+            if value.lower() not in existing.lower():
+                self.constraints[attribute] = f"{existing}|{value}"
+        else:
+            self.constraints[attribute] = value
 
     def flush_constraints(self):
         category = self.constraints.get("category")
@@ -43,11 +48,11 @@ class SessionState:
             if attr == "budget":
                 continue
             if attr == "category":
-                # Use only the last meaningful word (most specific)
                 words = cleaned.split()
                 parts.append(" ".join(words[-2:]) if len(words) > 2 else cleaned)
             else:
-                parts.append(cleaned)
+                sub_parts = cleaned.split("|")
+                parts.append(sub_parts[-1].strip())
         if not parts and self.conversation_history:
             parts.append(self.conversation_history[-1]["content"])
         return " ".join(parts)

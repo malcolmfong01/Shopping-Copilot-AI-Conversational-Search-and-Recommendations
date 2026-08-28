@@ -24,7 +24,7 @@ class Agent:
         self._bm25 = BM25Index(str(self._catalog_path))
 
         embeddings_dir = self._catalog_path.parent / "embeddings"
-        embeddings_file = embeddings_dir / "bge_base.npy"
+        embeddings_file = embeddings_dir / "minilm.npy"
         if DenseIndex is not None and embeddings_file.exists():
             self._dense = DenseIndex(
                 str(embeddings_file),
@@ -112,7 +112,7 @@ class Agent:
             for val in raw_values:
                 attr = self._classify_constraint(val)
                 cleaned = re.sub(r"^(color|material|budget|size|style|brand|feature):\s*", "", val, flags=re.I)
-                state.add_constraint(attr, cleaned)
+                state.add_constraint(attr, cleaned, accumulate=True)
             return
 
         # Pattern: "I'm looking for {category}" — always extract category first
