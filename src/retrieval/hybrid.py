@@ -94,11 +94,15 @@ class HybridRetriever:
                 score = self._partial_score(product, constraints)
                 scored_fallback.append((asin, score))
 
-        if filtered:
-            return filtered
+        if not filtered:
+            scored_fallback.sort(key=lambda x: x[1], reverse=True)
+            return [asin for asin, _ in scored_fallback[:50]]
 
         scored_fallback.sort(key=lambda x: x[1], reverse=True)
-        return [asin for asin, _ in scored_fallback[:50]]
+        top_partial = [asin for asin, s in scored_fallback[:20] if s > 0]
+        filtered_set = set(filtered)
+        extras = [a for a in top_partial if a not in filtered_set]
+        return filtered + extras
 
     def _matches_all(self, product: dict, constraints: dict[str, str]) -> bool:
         searchable = self._searchable_text(product)
