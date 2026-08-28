@@ -18,16 +18,16 @@ from src.dialog.state import ALLOWED_ATTRIBUTES, SessionState
 from src.llm_client import llm_call
 
 ATTRIBUTE_PRIORITY = [
-    "category",
     "feature",
+    "other",
     "material",
     "color",
     "style",
     "use_case",
+    "size",
+    "category",
     "budget",
     "brand",
-    "size",
-    "other",
 ]
 
 
@@ -48,9 +48,6 @@ def select_attribute(
     unasked = state.get_unasked_attributes()
     if not unasked:
         return "other"
-
-    if state.turn <= 1 and "category" in unasked:
-        return "category"
 
     if candidate_stats:
         result = _llm_select(state, candidate_stats, unasked)
