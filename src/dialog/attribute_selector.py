@@ -105,7 +105,10 @@ def compute_candidate_stats(candidates: list[dict]) -> dict[str, dict[str, int]]
                 stats["color"][color] += 1
 
         if product.get("price"):
-            price = product["price"]
+            try:
+                price = float(product["price"])
+            except (ValueError, TypeError):
+                continue
             if price < 25:
                 stats["budget"]["under $25"] += 1
             elif price < 50:
