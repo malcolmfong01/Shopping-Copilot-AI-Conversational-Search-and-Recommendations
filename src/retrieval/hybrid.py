@@ -59,7 +59,7 @@ class HybridRetriever:
         constraints: dict[str, str] | None = None,
         top_k: int = 50,
     ) -> list[dict]:
-        retrieval_k = top_k * 3
+        retrieval_k = top_k * 4
 
         bm25_results = self._bm25.search(query, top_k=retrieval_k)
 
