@@ -40,6 +40,11 @@ class SessionState:
             self.constraints["category"] = category
         self.attributes_asked = [a for a in self.attributes_asked if a == "category"]
 
+    _MATERIALS = {"cotton", "polyester", "nylon", "leather", "wool",
+                   "spandex", "silk", "rayon", "fabric", "denim", "linen", "mesh"}
+    _COLORS = {"black", "white", "red", "blue", "green", "pink", "brown",
+               "grey", "gray", "navy", "beige", "purple", "yellow", "orange"}
+
     def build_query(self) -> str:
         import re
         parts = []
@@ -50,6 +55,14 @@ class SessionState:
             if attr == "category":
                 words = cleaned.split()
                 parts.append(" ".join(words[-2:]) if len(words) > 2 else cleaned)
+            elif attr == "material":
+                tokens = set(re.findall(r"[a-z]+", cleaned.lower()))
+                found = tokens & self._MATERIALS
+                parts.append(" ".join(found) if found else cleaned.split("|")[-1].strip())
+            elif attr == "color":
+                tokens = set(re.findall(r"[a-z]+", cleaned.lower()))
+                found = tokens & self._COLORS
+                parts.append(" ".join(found) if found else cleaned.split("|")[-1].strip())
             else:
                 sub_parts = cleaned.split("|")
                 parts.append(sub_parts[-1].strip())

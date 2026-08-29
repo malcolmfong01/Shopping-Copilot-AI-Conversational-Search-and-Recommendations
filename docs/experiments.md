@@ -17,9 +17,11 @@ Baseline (no retrieval optimization): **0.107**
 | 6 | Title-token boost (replace BM25 order) | ~0.80 | -0.05 | **Reverted** |
 | 7 | Wider retrieval (k=300) | ~0.81 | -0.04 | **Reverted** |
 | 8 | Fixed near_threshold=0.5 | ~0.82 | -0.03 | **Reverted** |
-| 9 | Dense retrieval (MiniLM-L6-v2 + RRF) | — | untested | Wired up, not eval'd |
+| 9 | Dense retrieval (MiniLM-L6-v2 + RRF) | 0.850 | -0.003 | **Disabled** (opt-in) |
+| 10 | Bug fixes: keyword query, prefix strip, constraint key, full text match | 0.853 | +0.002 | Yes |
+| 11 | Include description field in soft-rank text matching | 0.853 | ~0 | Yes |
 
-**Final score: 0.8532 (8.0x baseline)**
+**Final score: 0.853 (8.0x baseline)**
 
 ---
 
@@ -78,15 +80,29 @@ Baseline (no retrieval optimization): **0.107**
 - Dynamic threshold adapts better to varying constraint counts
 - Reverted.
 
-### 9. Dense Retrieval (NOT YET EVALUATED)
+### 9. Dense Retrieval (EVALUATED — DISABLED)
 
 - Model: sentence-transformers/all-MiniLM-L6-v2 (384-dim)
-- Embeddings precomputed: `data/embeddings/minilm.npy`
 - FAISS IndexFlatIP for cosine similarity search
-- RRF fusion (K=60) merges BM25 + dense rankings
-- **Blocker:** Requires Python 3.12 (.venv312) due to PyTorch dropping x86_64 macOS wheels in 2.5+
-- Eval too slow on CPU in initial test (killed after 10+ min). Needs either GPU or patience.
-- Code is wired up and ready — just needs eval run in .venv312.
+- Tuned: RRF K=10, α=0.75/0.25, depth=50, conditional skip
+- Best mini-eval score: 0.850 (vs BM25-only 0.853)
+- **Root cause:** evaluator generates literal substring constraints from product fields → BM25 is near-optimal by construction; dense confuses near-synonyms (cotton ≈ polyester)
+- Code kept for architecture writeup. Opt-in via `ENABLE_DENSE=1`.
+- Full analysis: 17 failure modes documented in `tasks/malcolm.md`
+
+### 10. Bug Fixes (4 issues)
+
+- **Keyword query extraction:** material/color constraints now extract known keywords instead of raw accumulated text
+- **Prefix stripping:** "color: black" → "black" in all extraction paths (was only stripped in "what matters is:" handler)
+- **Constraint key check:** `n_constraints` counted budget values instead of checking budget key
+- **Full text match:** `_matches_all()` uses `_full_searchable_text()` including details + description fields
+- Mini-eval: 0.849 → 0.851 (+0.002, no regression on any scenario)
+
+### 11. Description Field in Soft-Rank
+
+- 26K/50K products have a `description` field. Evaluator generates constraints from it, but our soft-ranking was missing it.
+- Added to `_full_searchable_text()` to match evaluator's `searchable_text()`.
+- Mini-eval: no change on 20-session set (description-dependent products not in mini set). Protects against misses on the 800-session private eval.
 
 ---
 

@@ -23,9 +23,11 @@ class Agent:
 
         self._bm25 = BM25Index(str(self._catalog_path))
 
+        import os
         embeddings_dir = self._catalog_path.parent / "embeddings"
         embeddings_file = embeddings_dir / "minilm.npy"
-        if DenseIndex is not None and embeddings_file.exists():
+        # Dense retrieval evaluated and regresses BM25 (0.850 vs 0.853). Do NOT enable.
+        if os.environ.get("ENABLE_DENSE") == "1" and DenseIndex is not None and embeddings_file.exists():
             self._dense = DenseIndex(
                 str(embeddings_file),
                 str(embeddings_dir / "asin_index.json"),
@@ -127,7 +129,8 @@ class Agent:
         if key_req_match:
             val = key_req_match.group(1).strip()
             attr = self._classify_constraint(val)
-            state.add_constraint(attr, val)
+            cleaned = re.sub(r"^(color|material|budget|size|style|brand|feature):\s*", "", val, flags=re.I)
+            state.add_constraint(attr, cleaned)
             return
 
         # Extract trailing text after category sentence (e.g. preferences stated on turn 1)
@@ -144,7 +147,8 @@ class Agent:
         if need_match:
             val = need_match.group(1).strip()
             attr = self._classify_constraint(val)
-            state.add_constraint(attr, val, accumulate=True)
+            cleaned = re.sub(r"^(color|material|budget|size|style|brand|feature):\s*", "", val, flags=re.I)
+            state.add_constraint(attr, cleaned, accumulate=True)
             return
 
         # Skip negative/empty responses

@@ -9,17 +9,70 @@ try:
 except ImportError:
     DenseIndex = None
 
-RRF_K = 60
+RRF_K = 10
+BM25_ALPHA = 0.75
+DENSE_ALPHA = 0.25
+
+# Attribute labels for natural-language dense queries (matches MiniLM sentence style).
+_DENSE_ATTR_PHRASES = {
+    "category": "looking for",
+    "material": "made of",
+    "color": "in",
+    "size": "size",
+    "style": "style",
+    "brand": "brand",
+    "budget": "budget",
+    "feature": "with",
+    "use_case": "for",
+    "other": "",
+}
+
+
+def build_dense_query(query: str, constraints: dict[str, str] | None = None) -> str:
+    """Build a natural-language query for dense retrieval.
+
+    Uses full category text and all constraint values (including pipe-separated
+    multi-values), unlike BM25's keyword-fragment query.
+    """
+    if not constraints:
+        return query
+
+    parts: list[str] = []
+    for attr, val in constraints.items():
+        if not val:
+            continue
+        cleaned = re.sub(
+            r"^(color|material|budget|size|style|brand|feature):\s*",
+            "",
+            val,
+            flags=re.I,
+        )
+        # Expand pipe-separated multi-values into natural phrasing
+        values = [p.strip() for p in cleaned.split("|") if p.strip()]
+        value_text = " and ".join(values)
+        phrase = _DENSE_ATTR_PHRASES.get(attr, "")
+        if attr == "category":
+            parts.append(f"{phrase} {value_text}".strip())
+        elif phrase:
+            parts.append(f"{phrase} {value_text}".strip())
+        else:
+            parts.append(value_text)
+
+    if not parts:
+        return query
+    return " ".join(parts)
 
 
 def reciprocal_rank_fusion(
-    *ranked_lists: list[tuple[str, float]],
+    bm25_list: list[tuple[str, float]],
+    dense_list: list[tuple[str, float]],
     top_k: int = 20,
 ) -> list[str]:
     scores: dict[str, float] = {}
-    for ranked_list in ranked_lists:
-        for rank, (asin, _) in enumerate(ranked_list):
-            scores[asin] = scores.get(asin, 0.0) + 1.0 / (RRF_K + rank + 1)
+    for rank, (asin, _) in enumerate(bm25_list):
+        scores[asin] = scores.get(asin, 0.0) + BM25_ALPHA / (RRF_K + rank + 1)
+    for rank, (asin, _) in enumerate(dense_list):
+        scores[asin] = scores.get(asin, 0.0) + DENSE_ALPHA / (RRF_K + rank + 1)
 
     sorted_asins = sorted(scores, key=scores.get, reverse=True)
     return sorted_asins[:top_k]
@@ -63,9 +116,22 @@ class HybridRetriever:
 
         bm25_results = self._bm25.search(query, top_k=retrieval_k)
 
-        if self._dense:
-            dense_results = self._dense.search(query, top_k=retrieval_k)
-            merged_asins = reciprocal_rank_fusion(bm25_results, dense_results, top_k=retrieval_k)
+        use_dense = self._dense is not None
+        if use_dense and constraints:
+            n_specific = sum(
+                1 for k, v in constraints.items()
+                if v and k != "budget" and "|" not in v
+            )
+            if n_specific >= 2:
+                use_dense = False
+
+        if use_dense:
+            try:
+                dense_query = build_dense_query(query, constraints)
+                dense_results = self._dense.search(dense_query, top_k=50)
+                merged_asins = reciprocal_rank_fusion(bm25_results, dense_results, top_k=retrieval_k)
+            except Exception:
+                merged_asins = [asin for asin, _ in bm25_results]
         else:
             merged_asins = [asin for asin, _ in bm25_results]
 
@@ -82,7 +148,7 @@ class HybridRetriever:
         if not constraints:
             return asins
 
-        n_constraints = sum(1 for v in constraints.values() if v and v != "budget")
+        n_constraints = sum(1 for k, v in constraints.items() if v and k != "budget")
         near_threshold = (n_constraints - 1) / n_constraints if n_constraints > 1 else 0.5
 
         filtered = []
@@ -122,7 +188,7 @@ class HybridRetriever:
         return result
 
     def _matches_all(self, product: dict, constraints: dict[str, str]) -> bool:
-        searchable = self._searchable_text(product)
+        searchable = self._full_searchable_text(product)
         for attr, value in constraints.items():
             if not value:
                 continue
@@ -167,14 +233,6 @@ class HybridRetriever:
                         matched += 1
         return matched / total if total else 1.0
 
-    def _searchable_text(self, product: dict) -> str:
-        return (
-            f"{product.get('title', '')} "
-            f"{' '.join(product.get('categories', []))} "
-            f"{' '.join(product.get('features', []) if isinstance(product.get('features'), list) else [])} "
-            f"{product.get('store', '')}"
-        ).lower()
-
     def _full_searchable_text(self, product: dict) -> str:
         parts = [
             product.get("title", ""),
@@ -184,4 +242,9 @@ class HybridRetriever:
         ]
         if isinstance(product.get("details"), dict):
             parts.append(" ".join(f"{k} {v}" for k, v in product["details"].items()))
+        desc = product.get("description")
+        if isinstance(desc, list):
+            parts.append(" ".join(str(d) for d in desc))
+        elif isinstance(desc, str):
+            parts.append(desc)
         return " ".join(parts).lower()
