@@ -12,6 +12,7 @@ dependencies = [
 [project.optional-dependencies]
 groq = ["groq>=0.9"]
 gemini = ["google-generativeai>=0.8"]
+demo = ["flask>=3.0"]
 dev = ["pytest>=8.0"]
 
 [tool.uv]

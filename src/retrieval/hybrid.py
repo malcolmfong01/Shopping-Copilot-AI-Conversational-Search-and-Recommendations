@@ -196,7 +196,7 @@ class HybridRetriever:
                 budget_range = _parse_budget(value)
                 if budget_range:
                     price = product.get("price")
-                    if not price or not (budget_range[0] <= price <= budget_range[1]):
+                    if not isinstance(price, (int, float)) or not (budget_range[0] <= price <= budget_range[1]):
                         return False
                 continue
             parts = value.split("|") if "|" in value else [value]
@@ -219,7 +219,7 @@ class HybridRetriever:
                 budget_range = _parse_budget(value)
                 if budget_range:
                     price = product.get("price")
-                    if price and budget_range[0] <= price <= budget_range[1]:
+                    if isinstance(price, (int, float)) and budget_range[0] <= price <= budget_range[1]:
                         matched += 1
                 continue
             parts = value.split("|") if "|" in value else [value]
