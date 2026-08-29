@@ -35,23 +35,9 @@ efficiency = clip((11 - mttc) / 10, 0, 1)
 
 The starter agent is weak because it **never asks clarifying questions** (`ask_attribute` is always null), meaning the simulator never reveals additional constraints.
 
-## Scenario Types
+## Scenarios & Simulator
 
-The 200 public development sessions are distributed as:
-
-| Scenario | Count | % | Behavior |
-|----------|-------|---|----------|
-| buying | 80 | 40% | Straightforward purchase intent with clear constraints |
-| browsing | 80 | 40% | Open-ended exploration, vaguer preferences |
-| intent_override | 30 | 15% | User changes their mind at turn 3 or 4 — agent must detect and adapt |
-| boundary | 10 | 5% | User refuses to answer the first attribute question ("I don't have a preference") |
-
-## How the Simulator Works
-
-1. **Agent sends `ask_attribute`** (e.g., "color") → simulator reveals the corresponding hard constraint or soft preference if not yet disclosed
-2. **Agent sends `ask_attribute: null`** → simulator responds with "Ask me about one specific attribute"
-3. **Intent override turns**: at a predetermined turn (3 or 4), the user's intent completely changes — new target product, new constraints
-4. **Boundary sessions**: first attribute question gets "I don't have a preference" regardless of what's asked
+See [data-guide.md](data-guide.md) for scenario distribution, simulator behavior, and how constraints are revealed.
 
 ## Evaluation Configuration
 

@@ -46,14 +46,7 @@ User message → [Constraint Extraction] → [BM25 + Dense Hybrid Retrieval] →
 
 Every turn ALWAYS returns both recommendations AND asks one attribute.
 
-**Note on dense retrieval:** The 0.853 baseline is BM25-only. Dense retrieval (MiniLM + FAISS) is wired up but unvalidated. It activates automatically when PyTorch is importable and embeddings exist at `data/embeddings/minilm.npy`.
-
-To enable it:
-```bash
-pip install sentence-transformers faiss-cpu
-python -m src.embeddings.precompute
-```
-If PyTorch fails to install, check your Python version — torch currently requires Python ≤3.12. Once embeddings are precomputed, the agent uses hybrid retrieval automatically. We want your LLM tested against the strongest retrieval possible.
+**Note on dense retrieval:** The 0.853 baseline is BM25-only. Dense retrieval (MiniLM + FAISS) was evaluated and does not improve BM25 for this evaluator. It's opt-in via `ENABLE_DENSE=1` env var. Don't enable it — your LLM should build on the BM25-only baseline.
 
 ---
 

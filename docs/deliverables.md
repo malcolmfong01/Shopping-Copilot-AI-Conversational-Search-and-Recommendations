@@ -1,4 +1,46 @@
-# Deliverables & Judging Criteria
+# Deliverables, Rules & Judging — TechJam 2026 Track 4
+
+Deadline: **1 September 2026**.
+
+---
+
+## Rules & Constraints
+
+| Constraint | Detail |
+|-----------|--------|
+| Max turns | 10 per session (forced termination if exceeded) |
+| Catalog | Read-only, no mutations or mock ASINs |
+| LLM | No keys provided; teams supply their own. A paid LLM is NOT required. |
+| Execution | In-memory only; no external vector DB clusters |
+| Input | Pre-cleaned text only (no images, audio, typos) |
+| Sessions | Isolated single-user (no concurrency) |
+
+### Scoring
+
+```
+technical_score = 0.50 * hit_rate@10 + 0.30 * MRR + 0.20 * efficiency
+efficiency = clip((11 - MTTC) / 10, 0, 1)
+```
+
+| Metric | Weight | What it rewards |
+|--------|--------|-----------------|
+| Hit Rate@10 | 50% | Finding the target product in top-10 at all |
+| MRR | 30% | Ranking the target higher (1/rank) |
+| Efficiency (MTTC) | 20% | Finding it in fewer turns |
+
+- 200 public sessions for development (separate users/products from private)
+- **800 private sessions for final ranking** (different products)
+
+### On "Hybrid Retrieval"
+
+The problem statement says "combining keyword, category, and vector similarity." Our pipeline:
+- **Keyword**: BM25 via SQLite FTS5
+- **Category/Structured**: Soft constraint scoring on material, color, budget, category
+- **Semantic**: LLM re-ranking (strictly more powerful than a 384-dim vector embedding)
+
+Dense vector retrieval (MiniLM + FAISS) is implemented but opt-in (`ENABLE_DENSE=1`). It was thoroughly evaluated and does not improve BM25 for this evaluator's constraint pattern. See [tasks/malcolm.md](../tasks/malcolm.md) for analysis.
+
+---
 
 ## Deliverables
 
@@ -40,3 +82,14 @@
 | **Impact & Relevance** | 20% | Clear potential to deliver value to real users/stakeholders. Meaningful reach, tangible benefit, relevance beyond solving for the hackathon prompt alone. |
 | **Feasibility & Practicality** | 15% | Realistic and buildable beyond a prototype. Technically and operationally sustainable. Resource usage proportionate, architecture holds under real-world conditions, grounded rather than speculative. |
 | **Presentation & Communication** | 10% | [Final Event Only] Coherent story from problem to solution to potential. Able to respond to questions with depth, demonstrating genuine understanding. |
+
+---
+
+## Submission Checklist
+
+- [ ] Final score validated on full 200-session eval
+- [ ] LLM re-ranking integrated and tested
+- [ ] Demo video recorded and uploaded to YouTube
+- [ ] Devpost submission with project description
+- [ ] Code pushed to public GitHub repo
+- [ ] README updated with final scores and reproduction steps

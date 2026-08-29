@@ -8,14 +8,14 @@ TikTok TechJam 2026 — Track 4
 
 | Metric | Baseline | Current (no LLM) | Target (with LLM) |
 |--------|----------|-------------------|-------------------|
-| Hit Rate@10 | 12.5% | **90.5%** | 95%+ |
-| MRR | 0.068 | **0.637** | 0.80+ |
-| MTTC | 9.81 turns | **3.93 turns** | 3.0 |
+| Hit Rate@10 | 12.5% | **97%** | 98%+ |
+| MRR | 0.068 | **0.673** | 0.80+ |
+| MTTC | 9.81 turns | **2.68 turns** | 2.5 |
 | **Composite Score** | **0.107** | **0.853** | **0.90+** |
 
 Scoring: `0.50 * hit_rate@10 + 0.30 * MRR + 0.20 * efficiency`
 
-The retrieval pipeline alone (BM25 + soft scoring + constraint accumulation, no LLM) scores **8.0x the baseline**. The remaining headroom is in MRR — that's where LLM re-ranking will have the biggest impact.
+The retrieval pipeline alone (BM25 + soft scoring + constraint accumulation, no LLM) scores **8.0x the baseline**. MRR is the biggest remaining lever — LLM re-ranking can push targets from rank ~2-3 to #1.
 
 ---
 
@@ -28,10 +28,10 @@ User message
     ↓                      Supports pipe-separated accumulation (color|size)
 [Build Query] — clean terms from constraints, skip budget/noise
     ↓
-[Hybrid Retrieval: BM25 + Dense (optional)]
-    ↓  BM25: SQLite FTS5, k=200
-    ↓  Dense: MiniLM-L6-v2 + FAISS (when available)
-    ↓  RRF fusion (K=60)
+[Hybrid Retrieval: BM25 + Dense (opt-in)]
+    ↓  BM25: SQLite FTS5, weighted columns, k=200
+    ↓  Dense: MiniLM-L6-v2 + FAISS (ENABLE_DENSE=1)
+    ↓  RRF fusion (K=10, α=0.75/0.25)
     ↓
 [Soft Constraint Ranking] — score by fraction matched, interleave partials
     ↓  → 50 candidates
@@ -124,9 +124,9 @@ export GROQ_API_KEY="gsk_..."
 ## Limitations & Future Work
 
 - **Remaining misses are semantically ambiguous:** ~6 sessions have ultra-generic constraints ("polyester + Imported + Button closure") matching 40+ products. Pure text retrieval can't distinguish between them — LLM semantic understanding is needed.
-- **Dense retrieval untested:** Embeddings are precomputed and code is wired up, but eval hasn't been run yet due to PyTorch/macOS compatibility issues. Expected to help with the remaining BM25-unfindable products.
-- **No user profile utilization:** The `user_profile` field (preference tags, purchase frequency) is available but currently unused. Could inform initial retrieval before any questions are asked.
-- **Rate limit ceiling:** Groq's 30 RPM free tier means full eval takes ~2 hours. A paid tier or local model would enable faster iteration on LLM prompts.
+- **Dense retrieval does not improve BM25:** Thoroughly evaluated on Apple Silicon. MiniLM-L6-v2 confuses near-synonyms (cotton ≈ polyester) that BM25 matches exactly. The evaluator generates literal substring constraints, making BM25 near-optimal by construction. Code is kept for architecture demonstration (`ENABLE_DENSE=1` to activate).
+- **No user profile utilization:** `preference_tags` and `summary` are available but currently unused. Could inform re-ranking or initial retrieval.
+- **Rate limit ceiling:** Groq's 30 RPM free tier means full eval takes ~2 hours. A paid tier or local model would enable faster iteration.
 
 ## Team Contributions
 
@@ -137,23 +137,15 @@ export GROQ_API_KEY="gsk_..."
 
 ---
 
-## Submission Checklist
-
-- [ ] Final score above 0.90 on full eval
-- [ ] Demo video uploaded to YouTube (walkthrough showing conversational flow)
-- [ ] Devpost submission with project description
-- [ ] Code pushed to public GitHub repo
-
----
-
 ## Documentation
 
 | Doc | Description |
 |-----|-------------|
+| [docs/deliverables.md](docs/deliverables.md) | **Start here** — rules, scoring, deliverables, judging, checklist |
 | [docs/experiments.md](docs/experiments.md) | Optimization log: what was tried, scores, outcomes |
-| [docs/problem-statement.md](docs/problem-statement.md) | Full challenge description |
-| [docs/evaluation.md](docs/evaluation.md) | Scoring formula, metrics, scenarios |
+| [docs/evaluation.md](docs/evaluation.md) | Eval configuration and how to run |
 | [docs/agent-api-contract.md](docs/agent-api-contract.md) | Agent interface and schemas |
-| [docs/data-guide.md](docs/data-guide.md) | Catalog/session schemas, simulator behavior |
-| [docs/deliverables.md](docs/deliverables.md) | Submission requirements |
+| [docs/data-guide.md](docs/data-guide.md) | Catalog/session schemas, simulator behavior, scenarios |
+| [docs/problem-statement.md](docs/problem-statement.md) | Original challenge description (4 pillars) |
+| [docs/resources.md](docs/resources.md) | Official links and competition context |
 | [tasks/yanyox.md](tasks/yanyox.md) | Yanyox's LLM task spec |
