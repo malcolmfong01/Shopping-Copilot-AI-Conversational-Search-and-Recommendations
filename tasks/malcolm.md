@@ -4,48 +4,29 @@
 
 ---
 
-## 1. Validate Dense Retrieval
+## 1. Validate Dense Retrieval — DONE (decision pending)
 
-Dense retrieval is wired up but untested. Run this on Apple Silicon MacBook (32GB) to see if it helps.
+Ran on Apple Silicon (arm64). Dense active: **True**. Mini eval (20 sessions):
 
-```bash
-git clone https://github.com/malcolmfong01/Shopping-Copilot-AI-Conversational-Search-and-Recommendations.git
-cd Shopping-Copilot-AI-Conversational-Search-and-Recommendations
-git checkout malcolm/retrieval-pipeline
+| Metric | Dense hybrid | BM25 baseline |
+|---|---|---|
+| `recommended_technical_score` | **0.839** | **0.853** |
+| Hit@10 | 0.95 | — |
+| MRR | 0.656 | — |
+| MTTC | 2.65 | — |
+| Efficiency | 0.835 | — |
 
-python3 -m venv .venv
-.venv/bin/pip install -e .
-.venv/bin/pip install sentence-transformers faiss-cpu
+Dense is wired and runnable, but the first hybrid pass is ~0.014 below BM25-only. Embeddings are at `data/embeddings/minilm.npy`.
 
-bash data/download.sh
-
-# Precompute embeddings (~5 min on Apple Silicon)
-.venv/bin/python -m src.embeddings.precompute
-
-# Run mini eval — confirm "Dense retrieval active: True"
-.venv/bin/python -c "
-import json
-from evaluator.local_evaluator import evaluate, catalog_index, load_jsonl
-from src.agent import Agent
-
-samples = load_jsonl('data/public_set.jsonl')[:20]
-catalog_ids, categories, products = catalog_index('data/catalog.jsonl')
-agent = Agent('data/catalog.jsonl')
-print(f'Dense retrieval active: {agent._dense is not None}')
-result = evaluate(agent, samples, catalog_ids, categories, products)
-print(json.dumps({k: v for k, v in result.items() if k != 'sessions'}, indent=2))
-"
-```
-
-Compare `recommended_technical_score` to **0.853**. If higher → dense retrieval helps, keep it. If same/lower → skip it, focus on LLM re-ranker.
-
-**Why run it there:** The slow part is per-query model encoding at runtime (~200ms on Intel CPU, ~10ms on Apple Silicon). The precomputed catalog embeddings already exist — it's the live query encoding that makes eval impractical on Intel. You just need the score from one mini eval to decide if dense retrieval is worth keeping. The competition's eval server handles compute regardless.
+**Open decision — improve or skip?**
+- **Try improving:** tune hybrid fusion weights / top-k, query text construction, or when dense is used (e.g. browsing-only), then re-run the mini eval and see if it clears 0.853.
+- **Skip:** leave dense off for the competition pipeline and put effort into the LLM re-ranker on top of BM25.
 
 ---
 
 ## 2. Full Eval With Best Pipeline
 
-Once dense retrieval is validated (or skipped), run the full 200-session eval on the Apple Silicon machine to confirm the final retrieval-only score:
+Once the dense improve-vs-skip call is made, run the full 200-session eval with the chosen pipeline to confirm the final retrieval-only score:
 
 ```bash
 .venv/bin/python -m evaluator.local_evaluator
