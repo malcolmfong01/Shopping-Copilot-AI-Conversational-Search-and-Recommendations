@@ -37,6 +37,13 @@ def rank_candidates(
     candidate_descriptions = []
     for i, c in enumerate(candidates[:20]):
         desc = f"[{i}] {c.get('title', 'Unknown')} | {' '.join(c.get('categories', [])[:2])}"
+        if c.get("features"):
+            feats = c["features"]
+            if isinstance(feats, list):
+                feats = ", ".join(feats[:5])
+            desc += f" | features: {feats}"
+        if c.get("details"):
+            desc += f" | details: {c['details']}"
         if c.get("price"):
             desc += f" | ${c['price']}"
         candidate_descriptions.append(desc)
