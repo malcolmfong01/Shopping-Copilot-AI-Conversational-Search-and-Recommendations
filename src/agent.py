@@ -47,7 +47,7 @@ class Agent:
 
     def _load_catalog(self) -> dict[str, dict]:
         catalog = {}
-        with open(self._catalog_path) as f:
+        with open(self._catalog_path, encoding="utf-8") as f:
             for line in f:
                 product = json.loads(line)
                 catalog[product["parent_asin"]] = product

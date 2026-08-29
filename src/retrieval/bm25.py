@@ -28,7 +28,7 @@ class BM25Index:
         self._load_catalog(catalog_path)
 
     def _load_catalog(self, path: str):
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             rows = []
             for line in f:
                 p = json.loads(line)
