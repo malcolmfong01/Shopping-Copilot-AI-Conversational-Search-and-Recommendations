@@ -19,7 +19,7 @@ BM25_WEIGHTS = (6.0, 4.0, 2.5, 2.5, 1.5, 1.0)
 
 class BM25Index:
     def __init__(self, catalog_path: str):
-        self._conn = sqlite3.connect(":memory:")
+        self._conn = sqlite3.connect(":memory:", check_same_thread=False)
         self._conn.execute(
             "CREATE VIRTUAL TABLE products USING fts5("
             "parent_asin UNINDEXED, title, categories, features, details, store, description"

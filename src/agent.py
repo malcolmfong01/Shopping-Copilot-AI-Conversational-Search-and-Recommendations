@@ -104,6 +104,18 @@ class Agent:
             },
         }
 
+    def get_debug_info(self, session_id: str) -> dict:
+        state = self._state_mgr.get(session_id)
+        if state is None:
+            return {}
+        return {
+            "constraints": dict(state.constraints),
+            "query": state.build_query(),
+            "candidate_count": len(state.last_candidates),
+            "attributes_asked": list(state.attributes_asked),
+            "turn": state.turn,
+        }
+
     def _extract_constraints(self, state, user_message: str):
         msg = user_message.strip()
 

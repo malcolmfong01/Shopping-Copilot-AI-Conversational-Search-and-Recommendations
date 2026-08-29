@@ -1,0 +1,6 @@
+.main-layout {
+  display: grid;
+  grid-template-columns: 2fr 3fr;
+  flex: 1;
+  overflow: hidden;
+}
