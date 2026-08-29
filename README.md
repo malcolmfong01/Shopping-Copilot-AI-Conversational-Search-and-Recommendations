@@ -51,7 +51,7 @@ Return: {recommendations, ask_attribute, message}
 
 | Owner | Scope | Files |
 |-------|-------|-------|
-| Malcolm | Retrieval pipeline, constraint extraction, eval harness | `src/agent.py`, `src/retrieval/`, `src/dialog/state.py`, `src/dialog/intent_detector.py` |
+| Malcolm | Retrieval pipeline, constraint extraction, eval harness, demo webapp | `src/agent.py`, `src/retrieval/`, `src/dialog/state.py`, `src/dialog/intent_detector.py`, `webapp/` |
 | Yanyox | LLM re-ranking, attribute selection, message gen | `src/ranking/llm_ranker.py`, `src/dialog/attribute_selector.py` |
 
 ---
@@ -78,6 +78,21 @@ uv sync
 uv sync --extra groq
 export GROQ_API_KEY="gsk_..."
 ```
+
+### Demo Webapp
+
+```bash
+# Install webapp dependency
+uv sync --extra demo
+
+# Start Flask API server (loads catalog ~9s, serves on port 8080)
+.venv/bin/python webapp/app.py
+
+# In a second terminal, start the React dev server
+cd webapp/frontend && npm install && npm run dev
+```
+
+Open http://localhost:3000. The UI has a **"Try Example"** button that auto-types a 3-turn conversation demonstrating constraint extraction, product narrowing, and intent override.
 
 ---
 
@@ -116,6 +131,10 @@ export GROQ_API_KEY="gsk_..."
 │       └── precompute.py    # MiniLM-L6-v2 embedding generation
 ├── tasks/
 │   └── yanyox.md            # Full task spec for Yanyox
+├── webapp/
+│   ├── app.py               # Flask API server (endpoints + product enrichment)
+│   └── frontend/            # React + Vite (dark-themed two-panel UI)
+│       └── src/components/  # ChatPanel, ResultsPanel, ProductCard, Header
 └── pyproject.toml
 ```
 
@@ -132,7 +151,7 @@ export GROQ_API_KEY="gsk_..."
 
 | Member | Contribution |
 |--------|-------------|
-| Malcolm | Retrieval pipeline (BM25, dense, hybrid RRF), constraint extraction, soft scoring, evaluator integration, documentation |
+| Malcolm | Retrieval pipeline (BM25, dense, hybrid RRF), constraint extraction, soft scoring, evaluator integration |
 | Yanyox | LLM re-ranking prompts, attribute selection strategy, message generation |
 
 ---
