@@ -18,7 +18,7 @@ Baseline (no retrieval optimization): **0.107**
 | 7 | Wider retrieval (k=300) | ~0.81 | -0.04 | **Reverted** |
 | 8 | Fixed near_threshold=0.5 | ~0.82 | -0.03 | **Reverted** |
 | 9 | Dense retrieval (MiniLM-L6-v2 + RRF) | 0.850 | -0.003 | **Disabled** (opt-in) |
-| 10 | Bug fixes: keyword query, prefix strip, constraint key, full text match | 0.853 | +0.002 | Yes |
+| 10 | Bug fixes: prefix strip, constraint key, full text match | 0.853 | +0.002 | Yes (keyword extract reverted) |
 | 11 | Include description field in soft-rank text matching | 0.853 | ~0 | Yes |
 
 **Final score: 0.853 (8.0x baseline)**
@@ -90,12 +90,12 @@ Baseline (no retrieval optimization): **0.107**
 - Code kept for architecture writeup. Opt-in via `ENABLE_DENSE=1`.
 - Full analysis: 17 failure modes documented in `tasks/malcolm.md`
 
-### 10. Bug Fixes (4 issues)
+### 10. Bug Fixes (3 kept, 1 reverted)
 
-- **Keyword query extraction:** material/color constraints now extract known keywords instead of raw accumulated text
 - **Prefix stripping:** "color: black" → "black" in all extraction paths (was only stripped in "what matters is:" handler)
 - **Constraint key check:** `n_constraints` counted budget values instead of checking budget key
 - **Full text match:** `_matches_all()` uses `_full_searchable_text()` including details + description fields
+- ~~**Keyword query extraction:** material/color constraints extract known keywords instead of raw accumulated text~~ — **REVERTED**: stripped useful BM25 terms (e.g. "heather" from "Heather Grey: 90% Cotton"), causing 0.853 → 0.828
 - Mini-eval: 0.849 → 0.851 (+0.002, no regression on any scenario)
 
 ### 11. Description Field in Soft-Rank

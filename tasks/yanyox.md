@@ -30,18 +30,18 @@ The retrieval pipeline scores **0.853** without any LLM. Your job: use a free-ti
 ## Architecture
 
 ```
-User message → [Constraint Extraction] → [BM25 + Dense Hybrid Retrieval] → 50 candidates
-                                                                                ↓
-                                                                  [YOUR CODE: rank_candidates()]
-                                                                  Re-rank top 20 → best 10
-                                                                                ↓
-                                                                  [YOUR CODE: select_attribute()]
-                                                                  Pick most discriminating attribute
-                                                                                ↓
-                                                                  [YOUR CODE: generate_message()]
-                                                                  Natural reply (2-3 sentences)
-                                                                                ↓
-                                                                  Return: {recommendations, ask_attribute, message}
+User message → [Constraint Extraction] → [Build Query] → [BM25 Search] → [Soft Constraint Rank] → 50 candidates
+                                                                                                        ↓
+                                                                                          [YOUR CODE: rank_candidates()]
+                                                                                          Re-rank top 20 → best 10
+                                                                                                        ↓
+                                                                                          [YOUR CODE: select_attribute()]
+                                                                                          Pick most discriminating attribute
+                                                                                                        ↓
+                                                                                          [YOUR CODE: generate_message()]
+                                                                                          Natural reply (2-3 sentences)
+                                                                                                        ↓
+                                                                                          Return: {recommendations, ask_attribute, message}
 ```
 
 Every turn ALWAYS returns both recommendations AND asks one attribute.
