@@ -15,6 +15,8 @@ import json
 from src.dialog.state import SessionState
 from src.llm_client import llm_call
 
+last_rank_meta: dict = {"used": False}
+
 
 def rank_candidates(
     candidates: list[dict],
@@ -53,14 +55,17 @@ Candidates:
 
 Return JSON array of indices only, e.g. [3, 0, 7, ...]"""
 
+    global last_rank_meta
     content = llm_call(prompt, max_tokens=200)
     if content:
         try:
             indices = json.loads(content)
+            last_rank_meta = {"used": True}
             return [candidates[i]["parent_asin"] for i in indices if isinstance(i, int) and i < len(candidates)][:10]
         except (json.JSONDecodeError, IndexError):
             pass
 
+    last_rank_meta = {"used": False}
     return [c["parent_asin"] for c in candidates[:10]]
 
 

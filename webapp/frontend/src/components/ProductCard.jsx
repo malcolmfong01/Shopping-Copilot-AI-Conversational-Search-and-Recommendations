@@ -4,6 +4,40 @@ function truncate(str, len) {
   return str.length > len ? str.slice(0, len) + '…' : str
 }
 
+function MatchIcon({ ok }) {
+  if (ok) {
+    return (
+      <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+        <path d="M3 8.5l3.2 3.2L13 4.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+      <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function MatchTicks({ matches }) {
+  const entries = Object.entries(matches || {})
+  if (entries.length === 0) return null
+  return (
+    <ul className="match-ticks">
+      {entries.map(([attr, ok]) => (
+        <li
+          key={attr}
+          className={ok ? 'tick-yes' : 'tick-no'}
+          aria-label={`${attr} ${ok ? 'matched' : 'not matched'}`}
+        >
+          <MatchIcon ok={ok} />
+          <span>{attr}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export default function ProductCard({ rec, rank, hue, isTop }) {
   const initial = (rec.store || '?')[0].toUpperCase()
   const stars = rec.rating != null
@@ -48,6 +82,8 @@ export default function ProductCard({ rec, rank, hue, isTop }) {
           ))}
         </div>
       )}
+
+      <MatchTicks matches={rec.matches} />
 
       <div className="score-bar">
         <div className="score-bar-fill" style={{ width: `${(rec.score * 100).toFixed(0)}%` }} />

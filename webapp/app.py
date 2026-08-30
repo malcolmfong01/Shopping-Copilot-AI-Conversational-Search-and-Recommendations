@@ -31,6 +31,16 @@ def cors(response):
     return response
 
 
+@app.route("/api/config", methods=["GET", "OPTIONS"])
+def config():
+    if request.method == "OPTIONS":
+        return "", 204
+    return jsonify({
+        "dense_available": agent.dense_available,
+        "catalog_size": len(agent._catalog),
+    })
+
+
 @app.route("/api/new-session", methods=["POST", "OPTIONS"])
 def new_session():
     if request.method == "OPTIONS":
@@ -41,7 +51,11 @@ def new_session():
         "summary": "General shopper looking for clothing.",
     }
     agent.reset(session_id, profile)
-    return jsonify({"session_id": session_id, "user_profile": profile})
+    return jsonify({
+        "session_id": session_id,
+        "user_profile": profile,
+        "dense_available": agent.dense_available,
+    })
 
 
 @app.route("/api/chat", methods=["POST", "OPTIONS"])
@@ -58,11 +72,19 @@ def chat():
     elapsed_ms = int((time.time() - t0) * 1000)
 
     debug = agent.get_debug_info(session_id)
+    pipeline = dict(debug.get("pipeline") or {})
+    pipeline["timing_ms"] = {"total": elapsed_ms}
+    constraints = debug.get("constraints", {})
 
     enriched_recs = []
     for rec in result.get("recommendations", []):
         asin = rec["parent_asin"]
         product = agent._catalog.get(asin, {})
+        matches = (
+            agent._hybrid.constraint_matches(product, constraints)
+            if product and constraints
+            else {}
+        )
         enriched_recs.append({
             "parent_asin": asin,
             "score": rec["score"],
@@ -73,18 +95,20 @@ def chat():
             "review_count": product.get("rating_number", 0),
             "store": product.get("store", ""),
             "features": product.get("features", [])[:3],
+            "matches": matches,
         })
 
     return jsonify({
         "message": result["message"],
         "ask_attribute": result.get("ask_attribute"),
         "recommendations": enriched_recs,
-        "constraints": debug.get("constraints", {}),
+        "constraints": constraints,
         "query": debug.get("query", ""),
         "candidate_count": debug.get("candidate_count", 0),
         "attributes_asked": debug.get("attributes_asked", []),
         "timing_ms": elapsed_ms,
         "turn": turn,
+        "pipeline": pipeline,
     })
 
 

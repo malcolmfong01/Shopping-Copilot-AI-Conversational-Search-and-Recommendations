@@ -105,6 +105,8 @@ class HybridRetriever:
         self._bm25 = bm25
         self._dense = dense
         self._catalog = catalog
+        self.last_search_meta: dict = {}
+        self._last_soft_stats: dict = {"full_match": 0, "partial_kept": 0}
 
     def search(
         self,
@@ -125,16 +127,19 @@ class HybridRetriever:
             if n_specific >= 2:
                 use_dense = False
 
+        dense_used = False
         if use_dense:
             try:
                 dense_query = build_dense_query(query, constraints)
                 dense_results = self._dense.search(dense_query, top_k=50)
                 merged_asins = reciprocal_rank_fusion(bm25_results, dense_results, top_k=retrieval_k)
+                dense_used = True
             except Exception:
                 merged_asins = [asin for asin, _ in bm25_results]
         else:
             merged_asins = [asin for asin, _ in bm25_results]
 
+        self._last_soft_stats = {"full_match": min(len(merged_asins), top_k), "partial_kept": 0}
         if constraints:
             merged_asins = self._soft_rank(merged_asins, constraints)
 
@@ -142,7 +147,48 @@ class HybridRetriever:
         for asin in merged_asins[:top_k]:
             if asin in self._catalog:
                 results.append(self._catalog[asin])
+
+        self.last_search_meta = {
+            "bm25_k": retrieval_k,
+            "bm25_hits": len(bm25_results),
+            "dense_used": dense_used,
+            "full_match_count": self._last_soft_stats["full_match"],
+            "partial_kept": self._last_soft_stats["partial_kept"],
+            "returned": len(results),
+        }
         return results
+
+    def constraint_matches(self, product: dict, constraints: dict[str, str]) -> dict[str, bool]:
+        """Per-attribute match flags using the same text/budget logic as ranking."""
+        searchable = self._full_searchable_text(product)
+        searchable_tokens = _tokenize(searchable)
+        matches: dict[str, bool] = {}
+        for attr, value in constraints.items():
+            if not value:
+                continue
+            if attr == "budget":
+                budget_range = _parse_budget(value)
+                if budget_range:
+                    price = product.get("price")
+                    matches[attr] = (
+                        isinstance(price, (int, float))
+                        and budget_range[0] <= price <= budget_range[1]
+                    )
+                else:
+                    matches[attr] = False
+                continue
+            parts = value.split("|") if "|" in value else [value]
+            ok = True
+            for part in parts:
+                if part.lower() in searchable:
+                    continue
+                part_tokens = _tokenize(part)
+                if part_tokens and len(part_tokens & searchable_tokens) / len(part_tokens) >= 0.8:
+                    continue
+                ok = False
+                break
+            matches[attr] = ok
+        return matches
 
     def _soft_rank(self, asins: list[str], constraints: dict[str, str]) -> list[str]:
         if not constraints:
@@ -168,7 +214,9 @@ class HybridRetriever:
 
         if not filtered:
             scored_fallback.sort(key=lambda x: x[1], reverse=True)
-            return [asin for asin, _ in scored_fallback[:50]]
+            result = [asin for asin, _ in scored_fallback[:50]]
+            self._last_soft_stats = {"full_match": 0, "partial_kept": len(result)}
+            return result
 
         scored_fallback.sort(key=lambda x: x[1], reverse=True)
         top_partial = [asin for asin, s in scored_fallback[:20] if s > 0]
@@ -185,6 +233,10 @@ class HybridRetriever:
         for a in extras:
             if a not in set(result):
                 result.append(a)
+        self._last_soft_stats = {
+            "full_match": len(filtered),
+            "partial_kept": len([a for a in result if a not in filtered_set]),
+        }
         return result
 
     def _matches_all(self, product: dict, constraints: dict[str, str]) -> bool:

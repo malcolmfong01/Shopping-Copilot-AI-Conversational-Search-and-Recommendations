@@ -14,6 +14,7 @@ class SessionState:
     constraints: dict[str, str] = field(default_factory=dict)
     attributes_asked: list[str] = field(default_factory=list)
     last_candidates: list[dict] = field(default_factory=list)
+    last_pipeline: dict = field(default_factory=dict)
     turn: int = 0
 
     def update(self, user_message: str, turn: int):

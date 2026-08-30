@@ -1,7 +1,8 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import Header from './components/Header'
 import ChatPanel from './components/ChatPanel'
 import ResultsPanel from './components/ResultsPanel'
+import ArchitectureView from './components/ArchitectureView'
 import './App.css'
 
 const EXAMPLE_MESSAGES = [
@@ -10,26 +11,63 @@ const EXAMPLE_MESSAGES = [
   "For that, what matters is: size: 10; brand: Nike.",
 ]
 
+const VIEW_MODE_KEY = 'shopping-copilot-view-mode'
+
+function readStoredViewMode() {
+  try {
+    const v = sessionStorage.getItem(VIEW_MODE_KEY)
+    if (v === 'architecture' || v === 'product') return v
+  } catch {
+    /* ignore */
+  }
+  return 'product'
+}
+
 export default function App() {
   const [sessionId, setSessionId] = useState(null)
   const [turn, setTurn] = useState(0)
   const [messages, setMessages] = useState([])
   const [constraints, setConstraints] = useState({})
   const [recommendations, setRecs] = useState([])
-  const [stats, setStats] = useState({})
+  const [pipeline, setPipeline] = useState(null)
+  const [denseAvailable, setDenseAvailable] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [viewMode, setViewMode] = useState(readStoredViewMode)
   const turnRef = useRef(0)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/config')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) setDenseAvailable(Boolean(data.dense_available))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  const handleViewModeChange = useCallback((mode) => {
+    setViewMode(mode)
+    try {
+      sessionStorage.setItem(VIEW_MODE_KEY, mode)
+    } catch {
+      /* ignore */
+    }
+  }, [])
 
   const startSession = useCallback(async () => {
     const res = await fetch('/api/new-session', { method: 'POST' })
     const data = await res.json()
     setSessionId(data.session_id)
+    if (typeof data.dense_available === 'boolean') {
+      setDenseAvailable(data.dense_available)
+    }
     setTurn(0)
     turnRef.current = 0
     setMessages([])
     setConstraints({})
     setRecs([])
-    setStats({})
+    setPipeline(null)
     return data.session_id
   }, [])
 
@@ -57,12 +95,7 @@ export default function App() {
       }])
       setConstraints(data.constraints || {})
       setRecs(data.recommendations || [])
-      setStats({
-        candidateCount: data.candidate_count,
-        shown: (data.recommendations || []).length,
-        query: data.query,
-        timingMs: data.timing_ms,
-      })
+      setPipeline(data.pipeline || null)
     } catch {
       setMessages(prev => [...prev, {
         role: 'agent',
@@ -96,20 +129,32 @@ export default function App() {
 
   return (
     <>
-      <Header turn={turn} onNew={handleNewSession} />
-      <main className="main-layout">
-        <ChatPanel
-          messages={messages}
-          loading={loading}
-          onSend={handleSend}
-          onExample={handleExample}
+      <Header
+        turn={turn}
+        onNew={handleNewSession}
+        viewMode={viewMode}
+        onViewModeChange={handleViewModeChange}
+      />
+      {viewMode === 'architecture' ? (
+        <ArchitectureView
+          pipeline={pipeline}
+          denseAvailable={denseAvailable}
         />
-        <ResultsPanel
-          constraints={constraints}
-          recommendations={recommendations}
-          stats={stats}
-        />
-      </main>
+      ) : (
+        <main className="main-layout">
+          <ChatPanel
+            messages={messages}
+            loading={loading}
+            onSend={handleSend}
+            onExample={handleExample}
+          />
+          <ResultsPanel
+            constraints={constraints}
+            recommendations={recommendations}
+            pipeline={pipeline}
+          />
+        </main>
+      )}
     </>
   )
 }

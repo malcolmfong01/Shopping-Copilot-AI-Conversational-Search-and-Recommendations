@@ -1,4 +1,5 @@
 import ProductCard from './ProductCard'
+import PipelineInspector from './PipelineInspector'
 import './ResultsPanel.css'
 
 function hashString(str) {
@@ -16,7 +17,7 @@ const PILL_CLASSES = {
   budget: 'pill-budget',
 }
 
-export default function ResultsPanel({ constraints, recommendations, stats }) {
+export default function ResultsPanel({ constraints, recommendations, pipeline }) {
   const constraintEntries = Object.entries(constraints)
 
   return (
@@ -57,35 +58,10 @@ export default function ResultsPanel({ constraints, recommendations, stats }) {
         )}
       </div>
 
-      <div className="pipeline-stats">
-        <div className="stat">
-          <span className="stat-label">Catalog</span>
-          <span className="stat-value">50,000</span>
-        </div>
-        <span className="stat-arrow">&rarr;</span>
-        <div className="stat">
-          <span className="stat-label">Candidates</span>
-          <span className="stat-value">{stats.candidateCount?.toLocaleString() ?? '—'}</span>
-        </div>
-        <span className="stat-arrow">&rarr;</span>
-        <div className="stat">
-          <span className="stat-label">Shown</span>
-          <span className="stat-value">{stats.shown ?? '—'}</span>
-        </div>
-        <div className="stat-divider" />
-        <div className="stat">
-          <span className="stat-label">Query</span>
-          <span className="stat-value stat-query" title={stats.query || ''}>
-            {stats.query || '—'}
-          </span>
-        </div>
-        <div className="stat">
-          <span className="stat-label">Time</span>
-          <span className="stat-value">
-            {stats.timingMs != null ? `${stats.timingMs}ms` : '—'}
-          </span>
-        </div>
-      </div>
+      <PipelineInspector
+        key={pipeline ? `${pipeline.query}|${JSON.stringify(pipeline.new_constraints)}|${pipeline.timing_ms?.total}` : 'idle'}
+        pipeline={pipeline}
+      />
     </section>
   )
 }

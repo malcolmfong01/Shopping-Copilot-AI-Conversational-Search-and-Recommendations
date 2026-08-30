@@ -3,4 +3,5 @@
   grid-template-columns: 2fr 3fr;
   flex: 1;
   overflow: hidden;
+  min-height: 0;
 }
