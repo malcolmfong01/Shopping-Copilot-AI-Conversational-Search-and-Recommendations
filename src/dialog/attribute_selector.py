@@ -30,6 +30,8 @@ ATTRIBUTE_PRIORITY = [
     "brand",
 ]
 
+last_select_meta: dict = {"source": "heuristic", "attribute": "other"}
+
 
 def select_attribute(
     state: SessionState,
@@ -45,19 +47,24 @@ def select_attribute(
     Returns:
         One of the allowed attribute strings.
     """
+    global last_select_meta
     unasked = state.get_unasked_attributes()
     if not unasked:
+        last_select_meta = {"source": "heuristic", "attribute": "other"}
         return "other"
 
     if candidate_stats:
         result = _llm_select(state, candidate_stats, unasked)
         if result:
+            last_select_meta = {"source": "llm", "attribute": result}
             return result
 
     for attr in ATTRIBUTE_PRIORITY:
         if attr in unasked:
+            last_select_meta = {"source": "heuristic", "attribute": attr}
             return attr
 
+    last_select_meta = {"source": "heuristic", "attribute": unasked[0]}
     return unasked[0]
 
 

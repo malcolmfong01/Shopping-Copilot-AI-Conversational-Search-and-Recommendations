@@ -1,6 +1,6 @@
 import './Header.css'
 
-export default function Header({ turn, onNew }) {
+export default function Header({ turn, onNew, viewMode, onViewModeChange }) {
   return (
     <header className="header">
       <div className="header-left">
@@ -11,11 +11,33 @@ export default function Header({ turn, onNew }) {
         </svg>
         <h1>Shopping Copilot</h1>
         <span className="badge">TechJam 2026</span>
+        <div className="view-toggle" role="group" aria-label="View mode">
+          <button
+            type="button"
+            className={`view-toggle-btn${viewMode === 'product' ? ' is-active' : ''}`}
+            aria-pressed={viewMode === 'product'}
+            onClick={() => onViewModeChange('product')}
+          >
+            Product
+          </button>
+          <button
+            type="button"
+            className={`view-toggle-btn${viewMode === 'architecture' ? ' is-active' : ''}`}
+            aria-pressed={viewMode === 'architecture'}
+            onClick={() => onViewModeChange('architecture')}
+          >
+            Architecture
+          </button>
+        </div>
       </div>
       <div className="header-right">
-        <span className="score-badge">Hit Rate 97% · 8x Baseline</span>
-        <span className="turn-counter">Turn {turn}/10</span>
-        <button className="btn-secondary" onClick={onNew}>New Session</button>
+        <span className="score-badge">Hit Rate 97% · 0.853 · 8× baseline</span>
+        {viewMode === 'product' && (
+          <span className="turn-counter">Turn {turn}/10</span>
+        )}
+        {viewMode === 'product' && (
+          <button type="button" className="btn-secondary" onClick={onNew}>New Session</button>
+        )}
       </div>
     </header>
   )

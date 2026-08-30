@@ -2,10 +2,10 @@ import json
 import re
 from pathlib import Path
 
-from src.dialog.attribute_selector import compute_candidate_stats, select_attribute
+from src.dialog.attribute_selector import compute_candidate_stats, last_select_meta, select_attribute
 from src.dialog.intent_detector import detect_intent_override
 from src.dialog.state import StateManager
-from src.ranking.llm_ranker import generate_message, rank_candidates
+from src.ranking.llm_ranker import generate_message, last_rank_meta, rank_candidates
 from src.retrieval.bm25 import BM25Index
 from src.retrieval.hybrid import HybridRetriever
 
@@ -40,6 +40,11 @@ class Agent:
         self._total_prompt_tokens = 0
         self._total_completion_tokens = 0
 
+    @property
+    def dense_available(self) -> bool:
+        """True when ENABLE_DENSE=1 and the dense index loaded successfully."""
+        return self._dense is not None
+
     def _load_catalog(self) -> dict[str, dict]:
         catalog = {}
         with open(self._catalog_path) as f:
@@ -59,10 +64,16 @@ class Agent:
 
         state.update(user_message, turn)
 
-        if detect_intent_override(state, user_message):
+        before_constraints = dict(state.constraints)
+        intent_override = detect_intent_override(state, user_message)
+        if intent_override:
             state.flush_constraints()
 
         self._extract_constraints(state, user_message)
+        new_constraints = {
+            k: v for k, v in state.constraints.items()
+            if before_constraints.get(k) != v
+        }
 
         query = state.build_query()
 
@@ -93,6 +104,16 @@ class Agent:
         message = generate_message(state, rec_products, ask_attribute)
 
         state.add_agent_response(message, ask_attribute)
+        state.last_pipeline = self._build_pipeline(
+            intent_override=intent_override,
+            new_constraints=new_constraints,
+            constraints=dict(state.constraints),
+            query=query,
+            candidates=candidates,
+            ranked_asins=ranked_asins[:top_k],
+            ask_attribute=ask_attribute,
+            shown=len(recommendations),
+        )
 
         return {
             "message": message,
@@ -102,6 +123,53 @@ class Agent:
                 "prompt_tokens": self._total_prompt_tokens,
                 "completion_tokens": self._total_completion_tokens,
             },
+        }
+
+    def _build_pipeline(
+        self,
+        intent_override: bool,
+        new_constraints: dict,
+        constraints: dict,
+        query: str,
+        candidates: list[dict],
+        ranked_asins: list[str],
+        ask_attribute: str | None,
+        shown: int,
+    ) -> dict:
+        meta = self._hybrid.last_search_meta
+        retrieval_rank = {c["parent_asin"]: i for i, c in enumerate(candidates)}
+        moved_up = []
+        for new_i, asin in enumerate(ranked_asins):
+            old_i = retrieval_rank.get(asin)
+            if old_i is not None and new_i < old_i:
+                moved_up.append({"asin": asin, "from": old_i + 1, "to": new_i + 1})
+
+        return {
+            "intent_override": intent_override,
+            "new_constraints": dict(new_constraints),
+            "constraints": dict(constraints),
+            "query": query,
+            "funnel": {
+                "catalog": len(self._catalog),
+                "bm25": meta.get("bm25_k", 200),
+                "soft": meta.get("returned", len(candidates)),
+                "llm_in": min(20, len(candidates)),
+                "shown": shown,
+            },
+            "soft": {
+                "full_match": meta.get("full_match_count", 0),
+                "partial_kept": meta.get("partial_kept", 0),
+            },
+            "llm": {
+                "used": bool(last_rank_meta.get("used")),
+                "moved_up": moved_up,
+            },
+            "ask": {
+                "attribute": ask_attribute,
+                "source": last_select_meta.get("source", "heuristic"),
+            },
+            "dense_used": bool(meta.get("dense_used")),
+            "bm25_hits": meta.get("bm25_hits", 0),
         }
 
     def get_debug_info(self, session_id: str) -> dict:
@@ -114,6 +182,7 @@ class Agent:
             "candidate_count": len(state.last_candidates),
             "attributes_asked": list(state.attributes_asked),
             "turn": state.turn,
+            "pipeline": dict(state.last_pipeline),
         }
 
     def _extract_constraints(self, state, user_message: str):
