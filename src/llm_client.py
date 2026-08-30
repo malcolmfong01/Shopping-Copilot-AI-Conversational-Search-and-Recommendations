@@ -32,13 +32,16 @@ def _groq_call(prompt: str, max_tokens: int, temperature: float, api_key: str) -
         from groq import Groq
         client = Groq(api_key=api_key)
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-20b",
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
             max_tokens=max_tokens,
+            reasoning_effort="low",
         )
+        print("### RAW GROQ RESPONSE:", response.choices[0].message, flush=True)
         return response.choices[0].message.content.strip()
-    except Exception:
+    except Exception as e:
+        print("### GROQ CALL FAILED:", repr(e), flush=True)
         return None
 
 

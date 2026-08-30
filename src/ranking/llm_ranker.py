@@ -33,6 +33,8 @@ def rank_candidates(
     """
     if not candidates:
         return []
+    
+    print("### rank_candidates CALLED with", len(candidates), "candidates", flush=True)
 
     candidate_descriptions = []
     for i, c in enumerate(candidates[:20]):
@@ -60,19 +62,24 @@ Known preferences: {json.dumps(state.constraints)}
 Candidates:
 {chr(10).join(candidate_descriptions)}
 
-Return JSON array of indices only, e.g. [3, 0, 7, ...]"""
+Return JSON array of indices only, e.g. [3, 0, 7, ...]
+Think briefly, then output only the JSON array as your final answer."""
 
     global last_rank_meta
-    content = llm_call(prompt, max_tokens=200)
+    content = llm_call(prompt, max_tokens=1500)
+    print("### llm_call returned:", repr(content)[:200], flush=True)
     if content:
         try:
             indices = json.loads(content)
+            result = [candidates[i]["parent_asin"] for i in indices if isinstance(i, int) and i < len(candidates)][:10]
             last_rank_meta = {"used": True}
-            return [candidates[i]["parent_asin"] for i in indices if isinstance(i, int) and i < len(candidates)][:10]
-        except (json.JSONDecodeError, IndexError):
-            pass
+            print("### rank_candidates SUCCESS, returning", len(result), "items", flush=True)
+            return result
+        except (json.JSONDecodeError, IndexError) as e:
+            print("### rank_candidates PARSE FAILED:", repr(e), flush=True)
 
     last_rank_meta = {"used": False}
+    print("### rank_candidates FALLBACK to retrieval order", flush=True)
     return [c["parent_asin"] for c in candidates[:10]]
 
 
