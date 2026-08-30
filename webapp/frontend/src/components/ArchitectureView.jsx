@@ -4,6 +4,7 @@ import {
   DENSE_LAYERS,
   WALKTHROUGH,
   denseStatusLabel,
+  llmBypassLabel,
   liveChipForLayer,
 } from '../architectureLayers'
 import './ArchitectureView.css'
@@ -40,22 +41,50 @@ function LayerCard({
   chip,
   status,
 }) {
+  const extra = [
+    layer.optional ? ' is-optional' : '',
+    layer.bypass ? ' is-bypass' : '',
+  ].join('')
+
   return (
     <button
       type="button"
-      className={`arch-layer${selected ? ' is-selected' : ''}${layer.optional ? ' is-optional' : ''}`}
+      className={`arch-layer${selected ? ' is-selected' : ''}${extra}`}
       aria-pressed={selected}
       onClick={() => onSelect(layer.id)}
     >
       <div className="arch-layer-top">
         <span className="arch-layer-label">{layer.label}</span>
         {layer.optional && <span className="arch-optional-tag">Optional</span>}
+        {layer.bypass && <span className="arch-bypass-tag">Can skip</span>}
         {status && <span className={statusClass(status)}>{status}</span>}
       </div>
       <span className="arch-layer-short">{layer.short}</span>
       {chip && <span className="arch-live-chip" title={chip}>{chip}</span>}
     </button>
   )
+}
+
+function LayerStack({
+  layers,
+  selectedId,
+  onSelect,
+  chip,
+  statusFor,
+  dashedArrows,
+}) {
+  return layers.map((layer, i) => (
+    <div key={layer.id} className="arch-node" role="listitem">
+      {i > 0 && <Arrow dashed={dashedArrows} />}
+      <LayerCard
+        layer={layer}
+        selected={selectedId === layer.id}
+        onSelect={onSelect}
+        chip={chip(layer.id)}
+        status={statusFor(layer.id)}
+      />
+    </div>
+  ))
 }
 
 function DetailPanel({ layer, status, chip, denseAvailable }) {
@@ -85,8 +114,15 @@ function DetailPanel({ layer, status, chip, denseAvailable }) {
           {denseAvailable
             ? 'this server can run it'
             : 'not turned on for this demo'}
-          {status ? <> ({status})</> : null}. Keyword search is enough for our score; this
-          path is here so you can see the full hybrid design.
+          {status ? <> ({status})</> : null}. Built from the full tags, not the
+          BM25 keyword string. Keyword search is what we ship for score.
+        </p>
+      )}
+      {layer.bypass && (
+        <p className="arch-detail-status">
+          Bypass stage — attempted every turn; if it fails we keep retrieval
+          order{status ? <> ({status})</> : null}. The model reorders candidates;
+          it does not pick the search path.
         </p>
       )}
       <h4>In this stage</h4>
@@ -129,12 +165,12 @@ export default function ArchitectureView({ pipeline, denseAvailable }) {
   const [showDensePath, setShowDensePath] = useState(() => {
     try {
       const stored = sessionStorage.getItem(SHOW_DENSE_KEY)
-      return stored == null ? true : stored === '1'
+      return stored === '1'
     } catch {
-      return true
+      return false
     }
   })
-  const [selectedId, setSelectedId] = useState('bm25')
+  const [selectedId, setSelectedId] = useState('extract')
 
   useEffect(() => {
     try {
@@ -153,7 +189,7 @@ export default function ArchitectureView({ pipeline, denseAvailable }) {
 
   const activeSelectedId = (
     !showDensePath && DENSE_LAYER_IDS.has(selectedId)
-  ) ? 'bm25' : selectedId
+  ) ? 'tags' : selectedId
   const selectedLayer = layersById[activeSelectedId] || MAIN_LAYERS[0]
 
   const hasPipeline = Boolean(pipeline)
@@ -162,13 +198,15 @@ export default function ArchitectureView({ pipeline, denseAvailable }) {
     denseUsed: Boolean(pipeline?.dense_used),
     hasPipeline,
   })
+  const llmStatus = llmBypassLabel({
+    hasPipeline,
+    used: Boolean(pipeline?.llm?.used),
+  })
 
-  const mainBeforeSoft = MAIN_LAYERS.filter((l) =>
-    ['input', 'extract', 'query', 'bm25'].includes(l.id),
-  )
-  const mainFromSoft = MAIN_LAYERS.filter((l) =>
-    ['soft', 'llm', 'output'].includes(l.id),
-  )
+  const trunk = MAIN_LAYERS.filter((l) => l.group === 'trunk')
+  const keywordPath = MAIN_LAYERS.filter((l) => l.group === 'keyword')
+  const tagsPath = MAIN_LAYERS.filter((l) => l.group === 'tags')
+  const mergePath = MAIN_LAYERS.filter((l) => l.group === 'merge')
 
   function chip(id) {
     if (id === 'dense' || id === 'rrf') {
@@ -180,8 +218,16 @@ export default function ArchitectureView({ pipeline, denseAvailable }) {
 
   function statusFor(id) {
     if (id === 'dense' || id === 'rrf') return denseStatus
+    if (id === 'llm') return llmStatus
+    if (id === 'ask' && pipeline?.ask?.source) {
+      return pipeline.ask.source === 'llm' ? 'LLM' : 'heuristic'
+    }
     return null
   }
+
+  const rejoin = showDensePath
+    ? 'BM25 list + optional dense blend, scored with full tags'
+    : 'BM25 list scored with full tags (not the shortened query)'
 
   return (
     <section className="architecture-view" aria-label="Pipeline architecture">
@@ -189,8 +235,8 @@ export default function ArchitectureView({ pipeline, denseAvailable }) {
         <div>
           <h2>How a message becomes recommendations</h2>
           <p>
-            Follow one shoe-shopping example through each step. Product mode is the live demo;
-            this view is the walkthrough for judges.
+            This is the real data flow: tags split into a keyword string and a full
+            dictionary. Meaning search is optional and off in the shipped score.
           </p>
         </div>
         <label className="arch-dense-toggle">
@@ -205,58 +251,88 @@ export default function ArchitectureView({ pipeline, denseAvailable }) {
 
       <div className="arch-body">
         <div className="arch-diagram" role="list">
-          {mainBeforeSoft.map((layer, i) => (
-            <div key={layer.id} className="arch-node" role="listitem">
-              {i > 0 && <Arrow />}
-              <LayerCard
-                layer={layer}
-                selected={activeSelectedId === layer.id}
-                onSelect={setSelectedId}
-                chip={chip(layer.id)}
-              />
-            </div>
-          ))}
+          <LayerStack
+            layers={trunk}
+            selectedId={activeSelectedId}
+            onSelect={setSelectedId}
+            chip={chip}
+            statusFor={statusFor}
+          />
 
-          {showDensePath && (
-            <div className="arch-branch" role="group" aria-label="Optional meaning-search path">
-              <div className="arch-branch-label">Optional — search by meaning too</div>
-              <Arrow dashed />
-              <div className="arch-branch-rail">
-                {DENSE_LAYERS.map((layer, i) => (
-                  <div key={layer.id} className="arch-node">
-                    {i > 0 && <Arrow dashed />}
-                    <LayerCard
-                      layer={layer}
-                      selected={activeSelectedId === layer.id}
+          <Arrow />
+          <div className="arch-fork" role="group" aria-label="Tags feed two paths">
+            <p className="arch-fork-caption">Same tags, two consumers</p>
+            <div className="arch-fork-cols">
+              <div className="arch-fork-col">
+                <p className="arch-fork-label">Keyword string → BM25</p>
+                <LayerStack
+                  layers={keywordPath}
+                  selectedId={activeSelectedId}
+                  onSelect={setSelectedId}
+                  chip={chip}
+                  statusFor={statusFor}
+                />
+              </div>
+              <div className="arch-fork-col">
+                <p className="arch-fork-label">Full tags → matching</p>
+                <LayerStack
+                  layers={tagsPath}
+                  selectedId={activeSelectedId}
+                  onSelect={setSelectedId}
+                  chip={chip}
+                  statusFor={statusFor}
+                />
+                {showDensePath && (
+                  <div className="arch-branch" role="group" aria-label="Optional meaning-search path">
+                    <div className="arch-branch-label">Optional — from full tags, not BM25 words</div>
+                    <Arrow dashed />
+                    <LayerStack
+                      layers={DENSE_LAYERS}
+                      selectedId={activeSelectedId}
                       onSelect={setSelectedId}
-                      chip={chip(layer.id)}
-                      status={statusFor(layer.id)}
+                      chip={chip}
+                      statusFor={statusFor}
+                      dashedArrows
                     />
                   </div>
-                ))}
+                )}
               </div>
-              <p className="arch-branch-join">
-                When on, blends back in before “Prefer products that fit the tags”
-              </p>
             </div>
-          )}
+            <p className="arch-fork-rejoin">{rejoin}</p>
+          </div>
 
-          {mainFromSoft.map((layer) => (
-            <div key={layer.id} className="arch-node" role="listitem">
+          {mergePath.map((layer) => (
+            <div
+              key={layer.id}
+              className={`arch-node${layer.bypass ? ' arch-bypass-wrap' : ''}`}
+              role="listitem"
+            >
               <Arrow />
               <LayerCard
                 layer={layer}
                 selected={activeSelectedId === layer.id}
                 onSelect={setSelectedId}
                 chip={chip(layer.id)}
+                status={statusFor(layer.id)}
               />
+              {layer.bypass && (
+                <p className="arch-bypass-note">
+                  If no key or invalid JSON → keep retrieval order
+                </p>
+              )}
             </div>
           ))}
         </div>
 
         <DetailPanel
           layer={selectedLayer}
-          status={selectedLayer?.optional ? denseStatus : null}
+          status={
+            selectedLayer?.optional
+              ? denseStatus
+              : selectedLayer?.bypass
+                ? llmStatus
+                : statusFor(selectedLayer?.id)
+          }
           chip={chip(selectedLayer?.id)}
           denseAvailable={denseAvailable}
         />

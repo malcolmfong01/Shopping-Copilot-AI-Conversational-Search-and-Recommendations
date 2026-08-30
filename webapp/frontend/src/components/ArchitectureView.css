@@ -136,6 +136,69 @@
   box-shadow: none;
 }
 
+.arch-layer.is-bypass {
+  border-style: dashed;
+}
+
+.arch-fork {
+  margin: 4px 0 8px;
+  padding: 12px 14px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: rgba(138, 138, 154, 0.05);
+}
+
+.arch-fork-caption {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+  text-align: center;
+}
+
+.arch-fork-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.arch-fork-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.arch-fork-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 6px;
+  line-height: 1.35;
+}
+
+.arch-fork-rejoin {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 10px 4px 2px;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.arch-bypass-wrap {
+  padding: 0 0 4px;
+}
+
+.arch-bypass-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 6px 0 0;
+  line-height: 1.4;
+}
+
 .arch-layer-top {
   display: flex;
   align-items: center;
@@ -153,14 +216,23 @@
   color: var(--text-secondary);
 }
 
-.arch-optional-tag {
+.arch-optional-tag,
+.arch-bypass-tag {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: var(--warning);
-  border: 1px solid rgba(251, 191, 36, 0.35);
   border-radius: 4px;
   padding: 1px 6px;
+}
+
+.arch-optional-tag {
+  color: var(--warning);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+
+.arch-bypass-tag {
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
 }
 
 .arch-status {
@@ -186,9 +258,20 @@
   background: rgba(52, 211, 153, 0.12);
 }
 
-.arch-status-skipped-this-turn {
+.arch-status-skipped-this-turn,
+.arch-status-bypassed-this-turn,
+.arch-status-bypass-if-no-key {
   color: var(--warning);
   background: rgba(251, 191, 36, 0.12);
+}
+
+.arch-status-LLM {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.arch-status-heuristic {
+  color: var(--text-secondary);
 }
 
 .arch-live-chip {
@@ -234,6 +317,11 @@
   text-align: center;
   padding: 4px 0 0;
   font-style: italic;
+}
+
+.arch-fork-col .arch-branch {
+  margin-left: 0;
+  margin-top: 10px;
 }
 
 .arch-detail {
@@ -373,6 +461,10 @@
   .arch-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .arch-fork-cols {
+    grid-template-columns: 1fr;
   }
 }
 
