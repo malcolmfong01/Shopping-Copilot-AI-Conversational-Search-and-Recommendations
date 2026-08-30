@@ -74,6 +74,7 @@
   flex-direction: column;
   align-items: stretch;
   gap: 0;
+  position: relative;
 }
 
 .arch-node {
@@ -140,51 +141,77 @@
   border-style: dashed;
 }
 
-.arch-fork {
-  margin: 4px 0 8px;
-  padding: 12px 14px 10px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
-  background: rgba(138, 138, 154, 0.05);
+.arch-layer.is-compact {
+  min-height: 44px;
+  padding: 8px 10px;
+  background: transparent;
 }
 
-.arch-fork-caption {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.arch-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.arch-y-arrows {
   color: var(--text-muted);
-  margin: 0 0 10px;
-  text-align: center;
+  height: 48px;
+  margin: 0 -8px;
 }
 
-.arch-fork-cols {
+.arch-y-arrows svg {
+  display: block;
+  width: 100%;
+  height: 48px;
+}
+
+.arch-y-labels {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.35fr 0.85fr;
   gap: 12px;
-  align-items: start;
+  margin: 0 0 6px;
 }
 
-.arch-fork-col {
+.arch-edge-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.3;
+}
+
+.arch-y-cols {
+  display: grid;
+  grid-template-columns: 1.35fr 0.85fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.arch-y-col {
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
-.arch-fork-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: 0 0 6px;
-  line-height: 1.35;
+.arch-y-col.is-skip {
+  min-height: 100%;
 }
 
-.arch-fork-rejoin {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: center;
-  padding: 10px 4px 2px;
-  margin: 0;
-  line-height: 1.4;
+.arch-skip-line {
+  flex: 1;
+  min-height: 28px;
+  width: 2px;
+  margin: 8px auto 0;
+  background: var(--text-muted);
+  border-radius: 1px;
+  opacity: 0.7;
 }
 
 .arch-bypass-wrap {
@@ -319,7 +346,7 @@
   font-style: italic;
 }
 
-.arch-fork-col .arch-branch {
+.arch-y-col .arch-branch {
   margin-left: 0;
   margin-top: 10px;
 }
@@ -463,8 +490,25 @@
     align-items: stretch;
   }
 
-  .arch-fork-cols {
+  .arch-y-labels,
+  .arch-y-cols {
     grid-template-columns: 1fr;
+  }
+
+  .arch-y-arrows:not(.arch-y-arrows-join) {
+    display: none;
+  }
+
+  .arch-y-labels .arch-edge-label:first-child::before {
+    content: "↓ ";
+  }
+
+  .arch-y-labels .arch-edge-label:last-child::before {
+    content: "↓ ";
+  }
+
+  .arch-skip-line {
+    min-height: 16px;
   }
 }
 

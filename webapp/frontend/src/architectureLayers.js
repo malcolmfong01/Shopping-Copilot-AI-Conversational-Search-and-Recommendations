@@ -56,8 +56,8 @@ export const MAIN_LAYERS = [
   {
     id: 'tags',
     group: 'tags',
-    label: 'Keep the full tags',
-    short: 'Constraint dict',
+    label: 'Full tags',
+    short: 'Unchanged dict',
     story: 'The same dictionary is not replaced by the keyword string. Soft rank (and meaning search, if on) still see the full category, every stacked | value, and budget.',
     how: 'No extra transform — we pass the extracted tags through as-is.',
     before: [
