@@ -16,7 +16,7 @@ export const MAIN_LAYERS = [
     story: 'The shopper types what they want in normal language. Nothing has been searched yet — we only have the words they said.',
     how: 'We take the latest chat message as the starting point for this turn.',
     before: "I'm looking for Men's Running Shoes. A key requirement is: breathable mesh upper.",
-    after: 'That full sentence is handed to the next step to pull out the useful bits.',
+    after: 'Raw text → constraint extraction',
     techNote: 'Session turns are capped at 10 (competition rule).',
   },
   {
@@ -39,10 +39,10 @@ export const MAIN_LAYERS = [
   },
   {
     id: 'query',
-    group: 'keyword',
+    group: 'trunk',
     label: 'Build a short keyword string',
     short: 'build_query()',
-    story: 'One consumer of the tags is keyword search. We build a short string for BM25 only. Budget never goes in this string — it is checked later against price.',
+    story: 'We build a short search string for BM25 only — budget is skipped here (checked against price later). The full constraint dict is kept separately for ranking.',
     how: 'Drop prefixes (“color:”). Skip budget. If the category name is more than two words, keep the last two (“Men\'s Running Shoes” → “Running Shoes”). If a tag has several values stacked with |, keep only the last one. Those cuts are for FTS: generic parent words (Women, Shoes) would flood the results.',
     before: [
       'category: Men\'s Running Shoes',
@@ -51,27 +51,11 @@ export const MAIN_LAYERS = [
       'budget: under $80  ← skipped here',
     ].join('\n'),
     after: 'Running Shoes breathable mesh upper black',
-    techNote: 'Soft rank still sees the full category string. This shortening is BM25-only.',
-  },
-  {
-    id: 'tags',
-    group: 'tags',
-    label: 'Full tags',
-    short: 'Unchanged dict',
-    story: 'The same dictionary is not replaced by the keyword string. Soft rank (and meaning search, if on) still see the full category, every stacked | value, and budget.',
-    how: 'No extra transform — we pass the extracted tags through as-is.',
-    before: [
-      'category: Men\'s Running Shoes',
-      'feature: breathable mesh upper',
-      'color: black',
-      'budget: under $80',
-    ].join('\n'),
-    after: 'Same dict — full category and budget still present',
-    techNote: 'Two consumers, one dict: short string → BM25; full tags → soft rank (and dense query if enabled).',
+    techNote: 'BM25-only shortening. Soft rank still sees the original dict.',
   },
   {
     id: 'bm25',
-    group: 'keyword',
+    group: 'trunk',
     label: 'Find keyword matches',
     short: 'BM25 search',
     story: 'We search the whole catalog for products whose title and details contain those words. Stronger title matches rank higher. The catalog shrinks from tens of thousands to a few hundred candidates.',
@@ -82,14 +66,18 @@ export const MAIN_LAYERS = [
   },
   {
     id: 'soft',
-    group: 'merge',
+    group: 'trunk',
     label: 'Prefer products that fit the tags',
     short: 'Soft constraint rank',
-    story: 'We take the BM25 list (or the blended list if meaning search ran) and score it with the full tags — including budget vs price, and the un-shortened category. Near-misses stay in the pool instead of being thrown away for missing one detail.',
+    story: 'We take the ~200 BM25 results and re-score them against the full constraint dict — the unshortened category, every stacked | value, and budget vs price. Near-misses stay in the pool instead of being thrown away for missing one detail.',
     how: 'Full matches go first (up to 8). Near-misses are kept. Strong BM25 hits that miss only one tag are interleaved. Then we cap at about 50.',
     before: [
-      '~200 keyword matches + full tags',
-      'Check: Men\'s Running Shoes · breathable mesh · black · under $80',
+      '~200 BM25 matches',
+      '+ full constraint dict:',
+      '  category: Men\'s Running Shoes',
+      '  feature: breathable mesh upper',
+      '  color: black',
+      '  budget: under $80',
     ].join('\n'),
     after: [
       '~50 candidates',
@@ -101,11 +89,11 @@ export const MAIN_LAYERS = [
   },
   {
     id: 'llm',
-    group: 'merge',
+    group: 'trunk',
     bypass: true,
     label: 'AI re-rank — or keep order',
     short: 'LLM re-rank',
-    story: 'This stage is attempted every turn. The model only reorders the top 20 candidates. It does not choose BM25 vs dense, and it does not extract tags. If there is no API key, or the reply is not valid JSON, we keep retrieval order and search still works.',
+    story: 'Attempted every turn. The model reorders the top 20 candidates — it does not extract tags or choose the search path. If there is no API key or the reply is invalid JSON, we keep retrieval order and search still works.',
     how: 'Send short product blurbs + preferences to Groq or Gemini; it returns a ranked list of up to 10 indices. Remaining slots fill from the retrieval list.',
     before: 'Top 20 from the fit step + “wants black breathable running shoes under $80”',
     after: [
@@ -116,7 +104,7 @@ export const MAIN_LAYERS = [
   },
   {
     id: 'ask',
-    group: 'merge',
+    group: 'trunk',
     label: 'Pick the next question',
     short: 'Attribute select',
     story: 'We choose one attribute to ask about next so the following turn can add a tag and shrink the list. This is a separate decision from re-ranking.',
@@ -127,7 +115,7 @@ export const MAIN_LAYERS = [
   },
   {
     id: 'output',
-    group: 'merge',
+    group: 'trunk',
     label: 'Show 10 and reply',
     short: 'Display',
     story: 'We put the top 10 on the right and send a short chat line with the follow-up question. The sentence is a template, not written by the re-ranker.',
@@ -193,10 +181,6 @@ export function liveChipForLayer(layerId, pipeline) {
     }
     case 'query':
       return pipeline.query ? `“${pipeline.query}”` : null
-    case 'tags': {
-      const n = Object.keys(pipeline.constraints || {}).length
-      return n ? `${n} tags kept in full` : null
-    }
     case 'bm25':
       return pipeline.bm25_hits != null
         ? `${Number(pipeline.bm25_hits).toLocaleString()} matches`
