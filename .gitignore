@@ -28,12 +28,16 @@ build/
 venv/
 env/
 
-# IDE
+# IDE / local tooling
 .vscode/
 .idea/
+.agents/
 *.swp
 *.swo
 *~
+
+# Local skill install metadata
+skills-lock.json
 
 # OS
 .DS_Store
