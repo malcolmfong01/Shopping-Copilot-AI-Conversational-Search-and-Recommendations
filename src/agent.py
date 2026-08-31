@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from pathlib import Path
 
@@ -24,7 +25,6 @@ class Agent:
 
         self._bm25 = BM25Index(str(self._catalog_path))
 
-        import os
         embeddings_dir = self._catalog_path.parent / "embeddings"
         embeddings_file = embeddings_dir / "minilm.npy"
         # Dense retrieval evaluated and regresses BM25 (0.850 vs 0.853). Do NOT enable.

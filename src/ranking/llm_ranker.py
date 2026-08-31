@@ -1,21 +1,17 @@
-"""LLM-based re-ranking module. OWNED BY YANYOX.
+"""LLM-based candidate re-ranking and reply templates.
 
-Interface contract:
-- rank_candidates() receives top-20 products + full session context
-- Returns an ordered list of parent_asins (best first, max 10)
-- generate_message() produces a conversational reply
+rank_candidates() sends the top candidates plus session context to the LLM
+and returns ordered parent_asins (best first, max 10). Falls back to
+constraint-match order when the LLM is unavailable or returns invalid JSON.
 
-rank_candidates() calls the LLM with candidate descriptions + user context,
-falls back to retrieval order if LLM is unavailable or returns invalid JSON.
-generate_message() uses template strings (cosmetic only, not scored).
+generate_message() builds a short template reply (cosmetic; not scored).
 """
 
 import json
-import os
 import re
 
 from src.dialog.state import SessionState
-from src.llm_client import llm_call
+from src.llm_client import llm_call, _debug
 
 last_rank_meta: dict = {"used": False}
 
@@ -107,8 +103,7 @@ def rank_candidates(
     if not candidates:
         return []
 
-    if os.environ.get("DEBUG_LLM") == "1":
-        print(f"### rank_candidates CALLED: candidates={len(candidates)}", flush=True)
+    _debug(f"rank_candidates CALLED: candidates={len(candidates)}")
 
     candidate_descriptions = []
     for i, candidate in enumerate(candidates[:20]):
@@ -127,14 +122,14 @@ def rank_candidates(
         candidate_descriptions.append(description)
 
     context = state.get_context_summary()
-    
+
     # Build constraint matching hints for the LLM
     constraint_keys = list(state.constraints.keys())
     if constraint_keys:
         constraint_guidance = f"Match products against these user attributes first: {', '.join(constraint_keys)}. Products matching ALL constraints are best."
     else:
         constraint_guidance = "User has not stated specific constraints yet. Rank by general product quality and relevance."
-    
+
     prompt = f"""You are reranking shopping candidates. GOAL: Put products that match the user's stated preferences as high as possible.
 
 TASK: Return a JSON array of candidate indices, ranked by how well each matches the user's preferences.
@@ -169,8 +164,7 @@ Output: Return ONLY the JSON array. No other text."""
 
     global last_rank_meta
     content = llm_call(prompt, max_tokens=600)
-    if os.environ.get("DEBUG_LLM") == "1":
-        print(f"### llm_call returned: {repr(content)[:500]}", flush=True)
+    _debug(f"llm_call returned: {repr(content)[:500]}")
     if content:
         indices = _extract_json_array(content)
         if indices is not None:
@@ -201,24 +195,21 @@ Output: Return ONLY the JSON array. No other text."""
                 )
                 result = result[:10]
                 last_rank_meta = {"used": True}
-                if os.environ.get("DEBUG_LLM") == "1":
-                    score_by_asin = {
-                        candidate["parent_asin"]: round(_constraint_match_score(candidate, state), 3)
-                        for candidate in candidates
-                    }
-                    print(f"### MODEL ORDER: {model_result}", flush=True)
-                    print(
-                        f"### FINAL ORDER: {result} | CONSTRAINT SCORES: "
-                        f"{[score_by_asin[asin] for asin in result]}",
-                        flush=True,
-                    )
-                    print(f"### rank_candidates LLM SUCCESS: returned={len(result)}", flush=True)
+                score_by_asin = {
+                    candidate["parent_asin"]: round(_constraint_match_score(candidate, state), 3)
+                    for candidate in candidates
+                }
+                _debug(f"MODEL ORDER: {model_result}")
+                _debug(
+                    f"FINAL ORDER: {result} | CONSTRAINT SCORES: "
+                    f"{[score_by_asin[asin] for asin in result]}"
+                )
+                _debug(f"rank_candidates LLM SUCCESS: returned={len(result)}")
                 return result
 
     last_rank_meta = {"used": False}
     fallback = _constraint_ranked_candidates(candidates, state)
-    if os.environ.get("DEBUG_LLM") == "1":
-        print(f"### rank_candidates FALLBACK: constraint_match_order={fallback}", flush=True)
+    _debug(f"rank_candidates FALLBACK: constraint_match_order={fallback}")
     return fallback
 
 
