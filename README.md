@@ -6,14 +6,16 @@ TikTok TechJam 2026 — Track 4
 
 ## Current Score
 
-| Metric | Baseline | Current (no LLM) | Target (with LLM) |
-|--------|----------|-------------------|-------------------|
-| Hit Rate@10 | 12.5% | **97%** | 98%+ |
-| MRR | 0.068 | **0.673** | 0.80+ |
-| MTTC | 9.81 turns | **2.68 turns** | 2.5 |
-| **Composite** | **0.107** | **0.853** | **0.90+** |
+| Metric | Baseline | Current (BM25 + soft-rank, no LLM key) |
+|--------|----------|----------------------------------------|
+| Hit Rate@10 | 12.5% | **97%** |
+| MRR | 0.068 | **0.673** |
+| MTTC | 9.81 turns | **2.68 turns** |
+| **Composite** | **0.107** | **0.853** |
 
 Scoring: `0.50 * hit_rate@10 + 0.30 * MRR + 0.20 * efficiency`
+
+LLM re-ranking is available when `GROQ_API_KEY` or `GOOGLE_API_KEY` is set. Quote a full 200-session LLM composite here only after measuring it; until then keep the BM25 spine as the published score.
 
 ---
 
@@ -37,7 +39,7 @@ Attribute Select — pick the most discriminating unasked attribute
 Return: {recommendations, ask_attribute, message}
 ```
 
-Dense vector retrieval (MiniLM-L6-v2 + FAISS) is implemented but opt-in (`ENABLE_DENSE=1`). It was evaluated and does not improve BM25 — see [tasks/malcolm.md](tasks/malcolm.md) for the 17-point failure analysis.
+Dense vector retrieval (MiniLM-L6-v2 + FAISS) is implemented but opt-in (`ENABLE_DENSE=1`). It was evaluated and does not improve BM25 — see [experiments.md](docs/experiments.md) for the analysis.
 
 ---
 
@@ -66,6 +68,8 @@ uv sync
 ```bash
 uv sync --extra groq
 export GROQ_API_KEY="gsk_..."
+# optional fallback if Groq unset:
+# uv sync --extra gemini && export GOOGLE_API_KEY="..."
 ```
 
 ### Demo Webapp
@@ -111,7 +115,6 @@ The **Architecture** tab walks judges through each pipeline stage with before/af
 ├── evaluator/                    # Official local evaluator
 ├── data/                         # Competition data (gitignored)
 ├── docs/                         # Problem statement, scoring, experiments
-├── tasks/                        # Per-member task specs
 └── pyproject.toml
 ```
 
@@ -129,7 +132,7 @@ The **Architecture** tab walks judges through each pipeline stage with before/af
 ## Limitations
 
 - **Remaining misses are semantically ambiguous** — ~6 sessions have ultra-generic constraints ("polyester + Imported + Button closure") matching 40+ products. LLM re-ranking is needed to disambiguate.
-- **Dense retrieval does not help** — the evaluator generates literal substring constraints, making BM25 near-optimal by construction.
+- **Dense retrieval does not help** — the evaluator generates literal substring constraints, making BM25 near-optimal by construction. See [experiments.md](docs/experiments.md) for the analysis.
 - **Rate limit ceiling** — Groq's 30 RPM free tier means full eval with LLM takes ~2 hours.
 
 ---
@@ -139,8 +142,10 @@ The **Architecture** tab walks judges through each pipeline stage with before/af
 | Doc | Description |
 |-----|-------------|
 | [deliverables.md](docs/deliverables.md) | Rules, scoring, deliverables, judging, checklist |
-| [experiments.md](docs/experiments.md) | Optimization log with scores and outcomes |
+| [experiments.md](docs/experiments.md) | Optimization log, dense opt-in rationale, LLM status |
 | [evaluation.md](docs/evaluation.md) | Eval config and how to run |
 | [data-guide.md](docs/data-guide.md) | Catalog/session schemas, simulator behavior |
 | [problem-statement.md](docs/problem-statement.md) | Original challenge description |
-| [tasks/yanyox.md](tasks/yanyox.md) | LLM task spec for Yanyox |
+| [agent-api-contract.md](docs/agent-api-contract.md) | Agent ↔ evaluator message contract |
+| [demo-script.md](docs/demo-script.md) | 90–120s demo video outline |
+| [resources.md](docs/resources.md) | Official competition links |

@@ -35,6 +35,17 @@ efficiency = clip((11 - mttc) / 10, 0, 1)
 
 The starter agent is weak because it **never asks clarifying questions** (`ask_attribute` is always null), meaning the simulator never reveals additional constraints.
 
+## Current Validated Results (Public 200)
+
+| Metric | Value |
+|--------|-------|
+| hit_rate@10 | 0.97 (97%) |
+| mrr | 0.673 |
+| mttc | 2.68 |
+| **technical_score** | **0.853** |
+
+These numbers are for the BM25 + soft-rank pipeline with LLM disabled/unavailable. To exercise LLM re-ranking during eval, export `GROQ_API_KEY` (or `GOOGLE_API_KEY`) before running the evaluator.
+
 ## Scenarios & Simulator
 
 See [data-guide.md](data-guide.md) for scenario distribution, simulator behavior, and how constraints are revealed.
