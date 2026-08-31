@@ -8,6 +8,7 @@ generate_message() builds a short template reply (cosmetic; not scored).
 """
 
 import json
+import os
 import re
 
 from src.dialog.state import SessionState
@@ -195,16 +196,17 @@ Output: Return ONLY the JSON array. No other text."""
                 )
                 result = result[:10]
                 last_rank_meta = {"used": True}
-                score_by_asin = {
-                    candidate["parent_asin"]: round(_constraint_match_score(candidate, state), 3)
-                    for candidate in candidates
-                }
-                _debug(f"MODEL ORDER: {model_result}")
-                _debug(
-                    f"FINAL ORDER: {result} | CONSTRAINT SCORES: "
-                    f"{[score_by_asin[asin] for asin in result]}"
-                )
-                _debug(f"rank_candidates LLM SUCCESS: returned={len(result)}")
+                if os.environ.get("DEBUG_LLM") == "1":
+                    score_by_asin = {
+                        candidate["parent_asin"]: round(_constraint_match_score(candidate, state), 3)
+                        for candidate in candidates
+                    }
+                    _debug(f"MODEL ORDER: {model_result}")
+                    _debug(
+                        f"FINAL ORDER: {result} | CONSTRAINT SCORES: "
+                        f"{[score_by_asin[asin] for asin in result]}"
+                    )
+                    _debug(f"rank_candidates LLM SUCCESS: returned={len(result)}")
                 return result
 
     last_rank_meta = {"used": False}
