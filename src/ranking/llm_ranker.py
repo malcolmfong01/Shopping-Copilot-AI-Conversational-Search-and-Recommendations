@@ -11,6 +11,7 @@ generate_message() uses template strings (cosmetic only, not scored).
 """
 
 import json
+import re
 
 from src.dialog.state import SessionState
 from src.llm_client import llm_call
@@ -18,69 +19,94 @@ from src.llm_client import llm_call
 last_rank_meta: dict = {"used": False}
 
 
+def _extract_json_array(text: str | None) -> list[int] | None:
+    if not text:
+        return None
+
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.I)
+    match = re.search(r"\[[\s\S]*\]", cleaned)
+    if not match:
+        return None
+
+    try:
+        data = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+
+    if isinstance(data, list):
+        indices = [item for item in data if isinstance(item, int)]
+        if indices:
+            return indices
+    return None
+
+
 def rank_candidates(
     candidates: list[dict],
     state: SessionState,
 ) -> list[str]:
-    """Re-rank candidates using LLM. Returns ordered parent_asins (best first, max 10).
-
-    Args:
-        candidates: Top-20 products with full metadata from hybrid retrieval.
-        state: Full session context (constraints, history, profile).
-
-    Returns:
-        List of up to 10 parent_asin strings, best match first.
-    """
+    """Re-rank candidates using LLM. Returns ordered parent_asins (best first, max 10)."""
     if not candidates:
         return []
-    
-    print("### rank_candidates CALLED with", len(candidates), "candidates", flush=True)
 
     candidate_descriptions = []
-    for i, c in enumerate(candidates[:20]):
-        desc = f"[{i}] {c.get('title', 'Unknown')} | {' '.join(c.get('categories', [])[:2])}"
-        if c.get("features"):
-            feats = c["features"]
-            if isinstance(feats, list):
-                feats = ", ".join(feats[:5])
-            desc += f" | features: {feats}"
-        if c.get("details"):
-            desc += f" | details: {c['details']}"
-        if c.get("price"):
-            desc += f" | ${c['price']}"
-        candidate_descriptions.append(desc)
+    for i, candidate in enumerate(candidates[:20]):
+        description = f"[{i}] {candidate.get('title', 'Unknown')} | {' '.join(candidate.get('categories', [])[:2])}"
+        if candidate.get("features"):
+            features = candidate["features"]
+            if isinstance(features, list):
+                features = ", ".join(features[:5])
+            description += f" | features: {features}"
+        if candidate.get("details"):
+            description += f" | details: {candidate['details']}"
+        if candidate.get("price"):
+            description += f" | ${candidate['price']}"
+        candidate_descriptions.append(description)
 
     context = state.get_context_summary()
+    prompt = f"""You are reranking the top candidates for a shopping assistant.
 
-    prompt = f"""You are a shopping assistant. Given the user's preferences and conversation context, rank these products by relevance. Return ONLY a JSON array of indices (0-based) in order of best match, max 10 items.
+Task: sort the candidate indices by how well they match the user's stated preferences and conversation context.
+
+Rules:
+- Return ONLY valid JSON: a single array of integer indices, 0-based.
+- No markdown fences, no prose, no explanations, no trailing commas.
+- Use at most 10 indices.
+- Prefer exact attribute matches (category, material, color, size, budget, use case, style, brand) over generic "looks good" items.
+- If the user preferences are broad or vague, keep the strongest candidates near the top but still rank by textual relevance.
+- Do not invent indices outside the provided candidate list.
 
 Context:
 {context}
 
-Known preferences: {json.dumps(state.constraints)}
+Known preferences: {json.dumps(state.constraints, ensure_ascii=False)}
 
 Candidates:
 {chr(10).join(candidate_descriptions)}
 
-Return JSON array of indices only, e.g. [3, 0, 7, ...]
-Think briefly, then output only the JSON array as your final answer."""
+Output format example:
+[3, 0, 7, 12]
+
+Final answer must be only the JSON array."""
 
     global last_rank_meta
     content = llm_call(prompt, max_tokens=1500)
-    print("### llm_call returned:", repr(content)[:200], flush=True)
     if content:
-        try:
-            indices = json.loads(content)
-            result = [candidates[i]["parent_asin"] for i in indices if isinstance(i, int) and i < len(candidates)][:10]
-            last_rank_meta = {"used": True}
-            print("### rank_candidates SUCCESS, returning", len(result), "items", flush=True)
-            return result
-        except (json.JSONDecodeError, IndexError) as e:
-            print("### rank_candidates PARSE FAILED:", repr(e), flush=True)
+        indices = _extract_json_array(content)
+        if indices is not None:
+            result = [
+                candidates[index]["parent_asin"]
+                for index in indices
+                if 0 <= index < len(candidates)
+            ][:10]
+            if result:
+                last_rank_meta = {"used": True}
+                return result
 
     last_rank_meta = {"used": False}
-    print("### rank_candidates FALLBACK to retrieval order", flush=True)
-    return [c["parent_asin"] for c in candidates[:10]]
+    return [candidate["parent_asin"] for candidate in candidates[:10]]
 
 
 def generate_message(
@@ -88,10 +114,7 @@ def generate_message(
     recommendations: list[dict],
     ask_attribute: str | None,
 ) -> str:
-    """Generate a conversational reply to the user.
-
-    Placeholder implementation. Yanyox replaces with LLM-generated responses.
-    """
+    """Generate a conversational reply to the user."""
     if not recommendations:
         msg = "Let me help you find the perfect item."
     else:
