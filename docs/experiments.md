@@ -20,11 +20,11 @@ Baseline (no retrieval optimization): **0.107**
 | 9 | Dense retrieval (MiniLM-L6-v2 + RRF) | 0.850 | -0.003 | **Disabled** (opt-in) |
 | 10 | Bug fixes: prefix strip, constraint key, full text match | 0.853 | +0.002 | Yes (keyword extract reverted) |
 | 11 | Include description field in soft-rank text matching | 0.853 | ~0 | Yes |
-| 12 | LLM re-ranking (Groq) | TBD (full eval) | TBD | Yes (optional) |
+| 12 | LLM re-ranking (Groq) | not measured (full eval) | not measured (full eval) | Yes (optional) |
 
 **Validated retrieval score (no LLM key): 0.853 (8.0× baseline)**
 
-LLM re-ranking is integrated for optional MRR gains when an API key is present; treat full-eval LLM numbers as TBD until a 200-session run is checked into the narrative with a real `results/*.json` summary.
+LLM re-ranking is integrated for optional MRR gains when an API key is present. No full-eval LLM result is reported because a 200-session run with a corresponding `results/*.json` summary has not been completed.
 
 ---
 
@@ -113,7 +113,7 @@ LLM re-ranking is integrated for optional MRR gains when an API key is present; 
 - Behavior: re-rank top-20 → top-10 JSON indices; on failure, constraint-match fallback (exact matches first)
 - Debug: `DEBUG_LLM=1`
 - **Validated spine remains BM25 + soft-rank at 0.853** on the full 200-session public eval without requiring an LLM key
-- Mini-eval with LLM (n=20), when measured locally, must be labeled separately and must not overwrite the 0.853 full-eval claim unless a new full 200-session run is recorded
+- Locally measured LLM mini-evals (n=20) are separate from the 0.853 full-eval result; no replacement full-eval claim is available without a new 200-session run
 
 ### Dense retrieval — why it stays opt-in
 

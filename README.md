@@ -15,7 +15,7 @@ TikTok TechJam 2026 — Track 4
 
 Scoring: `0.50 * hit_rate@10 + 0.30 * MRR + 0.20 * efficiency`
 
-LLM re-ranking is available when `GROQ_API_KEY` or `GOOGLE_API_KEY` is set. Quote a full 200-session LLM composite here only after measuring it; until then keep the BM25 spine as the published score.
+The published composite is the BM25 + soft-rank pipeline measured without an LLM key. LLM re-ranking is available when `GROQ_API_KEY` or `GOOGLE_API_KEY` is set but has not been measured over a full 200-session run.
 
 ---
 
@@ -61,6 +61,13 @@ uv sync
 
 # Run full eval (200 sessions, no LLM needed, ~2 min)
 .venv/bin/python -m evaluator.local_evaluator
+```
+
+### Unit Tests
+
+```bash
+uv sync --extra dev
+uv run pytest tests/ -q
 ```
 
 ### LLM Features
@@ -131,7 +138,7 @@ The **Architecture** tab walks judges through each pipeline stage with before/af
 
 ## Limitations
 
-- **Remaining misses are semantically ambiguous** — ~6 sessions have ultra-generic constraints ("polyester + Imported + Button closure") matching 40+ products. LLM re-ranking is needed to disambiguate.
+- **Remaining misses are semantically ambiguous** — ~6 sessions have ultra-generic constraints ("polyester + Imported + Button closure") matching 40+ products. The available LLM re-ranking addresses these residual ambiguous near-duplicates, which remain difficult to separate reliably.
 - **Dense retrieval does not help** — the evaluator generates literal substring constraints, making BM25 near-optimal by construction. See [experiments.md](docs/experiments.md) for the analysis.
 - **Rate limit ceiling** — Groq's 30 RPM free tier means full eval with LLM takes ~2 hours.
 
