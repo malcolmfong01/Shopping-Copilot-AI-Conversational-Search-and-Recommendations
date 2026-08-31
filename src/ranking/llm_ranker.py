@@ -11,6 +11,7 @@ generate_message() uses template strings (cosmetic only, not scored).
 """
 
 import json
+import os
 import re
 
 from src.dialog.state import SessionState
@@ -51,48 +52,70 @@ def rank_candidates(
     if not candidates:
         return []
 
+    if os.environ.get("DEBUG_LLM") == "1":
+        print(f"### rank_candidates CALLED: candidates={len(candidates)}", flush=True)
+
     candidate_descriptions = []
     for i, candidate in enumerate(candidates[:20]):
-        description = f"[{i}] {candidate.get('title', 'Unknown')} | {' '.join(candidate.get('categories', [])[:2])}"
+        title = str(candidate.get("title", "Unknown"))[:180]
+        categories = " ".join(str(value) for value in candidate.get("categories", [])[:2])
+        description = f"[{i}] {title} | {categories}"
         if candidate.get("features"):
             features = candidate["features"]
             if isinstance(features, list):
-                features = ", ".join(features[:5])
-            description += f" | features: {features}"
+                features = ", ".join(str(value) for value in features[:4])
+            description += f" | features: {str(features)[:300]}"
         if candidate.get("details"):
-            description += f" | details: {candidate['details']}"
+            description += f" | details: {str(candidate['details'])[:300]}"
         if candidate.get("price"):
             description += f" | ${candidate['price']}"
         candidate_descriptions.append(description)
 
     context = state.get_context_summary()
-    prompt = f"""You are reranking the top candidates for a shopping assistant.
+    
+    # Build constraint matching hints for the LLM
+    constraint_keys = list(state.constraints.keys())
+    if constraint_keys:
+        constraint_guidance = f"Match products against these user attributes first: {', '.join(constraint_keys)}. Products matching ALL constraints are best."
+    else:
+        constraint_guidance = "User has not stated specific constraints yet. Rank by general product quality and relevance."
+    
+    prompt = f"""You are reranking shopping candidates. GOAL: Put products that match the user's stated preferences as high as possible.
 
-Task: sort the candidate indices by how well they match the user's stated preferences and conversation context.
+TASK: Return a JSON array of candidate indices, ranked by how well each matches the user's preferences.
 
-Rules:
-- Return ONLY valid JSON: a single array of integer indices, 0-based.
-- No markdown fences, no prose, no explanations, no trailing commas.
-- Use at most 10 indices.
-- Prefer exact attribute matches (category, material, color, size, budget, use case, style, brand) over generic "looks good" items.
-- If the user preferences are broad or vague, keep the strongest candidates near the top but still rank by textual relevance.
-- Do not invent indices outside the provided candidate list.
+CRITICAL RULES:
+- Return ONLY valid JSON array format: [0, 3, 7, 2]
+- No markdown fences, no prose, no explanations.
+- Use at most 10 indices from the candidates below (0-based).
+- Do NOT invent or repeat indices; each index appears at most once.
 
-Context:
+RANKING STRATEGY (strict order):
+1. Tier 1 (best): Products matching ALL or most of the user's stated constraints.
+2. Tier 2: Products matching 3+ user constraints.
+3. Tier 3: Products matching 2 user constraints.
+4. Tier 4 (fallback): Products matching 1 or 0 constraints.
+
+Within each tier, prefer products with higher relevance (better title/category match).
+
+Constraint matching hint:
+{constraint_guidance}
+
+User conversation context:
 {context}
 
-Known preferences: {json.dumps(state.constraints, ensure_ascii=False)}
+User's stated preferences:
+{json.dumps(state.constraints, ensure_ascii=False)}
 
-Candidates:
+Candidates to rank (format: [index] title | categories | features):
 {chr(10).join(candidate_descriptions)}
 
-Output format example:
-[3, 0, 7, 12]
-
-Final answer must be only the JSON array."""
+Output: Return ONLY the JSON array. No other text."""
 
     global last_rank_meta
-    content = llm_call(prompt, max_tokens=1500)
+    content = llm_call(prompt, max_tokens=600)
+    if os.environ.get("DEBUG_LLM") == "1":
+        print(f"### llm_call returned: {repr(content)[:500]}", flush=True)
     if content:
         indices = _extract_json_array(content)
         if indices is not None:
@@ -103,9 +126,13 @@ Final answer must be only the JSON array."""
             ][:10]
             if result:
                 last_rank_meta = {"used": True}
+                if os.environ.get("DEBUG_LLM") == "1":
+                    print(f"### rank_candidates LLM SUCCESS: returned={len(result)}", flush=True)
                 return result
 
     last_rank_meta = {"used": False}
+    if os.environ.get("DEBUG_LLM") == "1":
+        print("### rank_candidates FALLBACK: retrieval order", flush=True)
     return [candidate["parent_asin"] for candidate in candidates[:10]]
 
 

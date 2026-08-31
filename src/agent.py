@@ -5,6 +5,7 @@ from pathlib import Path
 from src.dialog.attribute_selector import compute_candidate_stats, last_select_meta, select_attribute
 from src.dialog.intent_detector import detect_intent_override
 from src.dialog.state import StateManager
+from src.llm_client import last_usage
 from src.ranking.llm_ranker import generate_message, last_rank_meta, rank_candidates
 from src.retrieval.bm25 import BM25Index
 from src.retrieval.hybrid import HybridRetriever
@@ -80,8 +81,13 @@ class Agent:
         candidates = self._hybrid.search(query, constraints=state.constraints, top_k=50)
         state.last_candidates = candidates
 
-        # Pass top-20 to LLM for re-ranking; remaining 30 are fallback
-        ranked_asins = rank_candidates(candidates[:20], state)
+        turn_prompt_tokens = 0
+        turn_completion_tokens = 0
+
+        # Pass top-10 to LLM for re-ranking; remaining 40 are fallback
+        ranked_asins = rank_candidates(candidates[:10], state)
+        turn_prompt_tokens += last_usage.get("prompt_tokens", 0)
+        turn_completion_tokens += last_usage.get("completion_tokens", 0)
 
         # If LLM returned fewer than top_k, fill from remaining candidates
         ranked_set = set(ranked_asins)
@@ -94,6 +100,10 @@ class Agent:
 
         candidate_stats = compute_candidate_stats(candidates)
         ask_attribute = select_attribute(state, candidate_stats)
+        turn_prompt_tokens += last_usage.get("prompt_tokens", 0)
+        turn_completion_tokens += last_usage.get("completion_tokens", 0)
+        self._total_prompt_tokens += turn_prompt_tokens
+        self._total_completion_tokens += turn_completion_tokens
 
         recommendations = [
             {"parent_asin": asin, "score": 1.0 - i * 0.05}
@@ -120,8 +130,8 @@ class Agent:
             "ask_attribute": ask_attribute,
             "recommendations": recommendations,
             "usage": {
-                "prompt_tokens": self._total_prompt_tokens,
-                "completion_tokens": self._total_completion_tokens,
+                "prompt_tokens": turn_prompt_tokens,
+                "completion_tokens": turn_completion_tokens,
             },
         }
 

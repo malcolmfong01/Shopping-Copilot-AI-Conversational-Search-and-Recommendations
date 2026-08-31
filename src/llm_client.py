@@ -14,16 +14,54 @@ If neither is set, returns None (modules fall back to heuristics).
 
 import os
 
+last_usage: dict[str, int] = {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+}
+
+
+def _debug(message: str) -> None:
+    if os.environ.get("DEBUG_LLM") == "1":
+        print(f"### {message}", flush=True)
+
+
+def _reset_usage() -> None:
+    last_usage.update(prompt_tokens=0, completion_tokens=0)
+
+
+def _record_usage(response: object) -> None:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        usage = getattr(response, "usage_metadata", None)
+    if usage is None:
+        return
+
+    prompt_tokens = getattr(usage, "prompt_tokens", None)
+    completion_tokens = getattr(usage, "completion_tokens", None)
+    if prompt_tokens is None:
+        prompt_tokens = getattr(usage, "prompt_token_count", 0)
+    if completion_tokens is None:
+        completion_tokens = getattr(usage, "candidates_token_count", 0)
+
+    last_usage.update(
+        prompt_tokens=int(prompt_tokens or 0),
+        completion_tokens=int(completion_tokens or 0),
+    )
+
 
 def llm_call(prompt: str, max_tokens: int = 200, temperature: float = 0.0) -> str | None:
     """Make a single LLM call. Returns response text or None if no provider available."""
+    _reset_usage()
     groq_key = os.environ.get("GROQ_API_KEY")
     google_key = os.environ.get("GOOGLE_API_KEY")
 
     if groq_key:
+        _debug(f"LLM provider=groq max_tokens={max_tokens} prompt_chars={len(prompt)}")
         return _groq_call(prompt, max_tokens, temperature, groq_key)
     elif google_key:
+        _debug(f"LLM provider=gemini max_tokens={max_tokens} prompt_chars={len(prompt)}")
         return _gemini_call(prompt, max_tokens, temperature, google_key)
+    _debug("LLM call skipped: no API key configured")
     return None
 
 
@@ -73,6 +111,12 @@ def _groq_call(prompt: str, max_tokens: int, temperature: float, api_key: str) -
             max_tokens=max_tokens,
             reasoning_effort=reasoning_effort,
         )
+        _record_usage(response)
+        _debug(
+            "GROQ CALL SUCCEEDED: "
+            f"prompt_tokens={last_usage['prompt_tokens']} "
+            f"completion_tokens={last_usage['completion_tokens']}"
+        )
 
         message = response.choices[0].message
         text = _extract_text_from_message(message)
@@ -83,8 +127,10 @@ def _groq_call(prompt: str, max_tokens: int, temperature: float, api_key: str) -
         if isinstance(raw, str) and raw.strip():
             return raw.strip()
 
+        _debug("GROQ CALL RETURNED NO TEXT")
         return None
-    except Exception:
+    except Exception as error:
+        _debug(f"GROQ CALL FAILED: {type(error).__name__}: {str(error)[:300]}")
         return None
 
 
@@ -100,6 +146,13 @@ def _gemini_call(prompt: str, max_tokens: int, temperature: float, api_key: str)
                 temperature=temperature,
             ),
         )
+        _record_usage(response)
+        _debug(
+            "GEMINI CALL SUCCEEDED: "
+            f"prompt_tokens={last_usage['prompt_tokens']} "
+            f"completion_tokens={last_usage['completion_tokens']}"
+        )
         return response.text.strip()
-    except Exception:
+    except Exception as error:
+        _debug(f"GEMINI CALL FAILED: {type(error).__name__}: {str(error)[:300]}")
         return None
