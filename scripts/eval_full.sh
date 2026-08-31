@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Full eval: all 200 public sessions
-# ~2 hours with Groq LLM, ~2 min without
+# Full eval: all 200 public sessions, LLM off (submitted score 0.858).
+# Unset keys so a shell GROQ_API_KEY cannot change this run.
+# ~2 min. A full LLM eval is ~2 hours on Groq free tier and is not the submitted result.
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+unset GROQ_API_KEY GOOGLE_API_KEY
 
 .venv/bin/python -m evaluator.local_evaluator \
     --catalog data/catalog.jsonl \

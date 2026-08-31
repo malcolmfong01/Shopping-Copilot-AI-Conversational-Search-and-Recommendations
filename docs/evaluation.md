@@ -39,12 +39,16 @@ The starter agent is weak because it **never asks clarifying questions** (`ask_a
 
 | Metric | Value |
 |--------|-------|
-| hit_rate@10 | 0.97 (97%) |
-| mrr | 0.673 |
-| mttc | 2.68 |
-| **technical_score** | **0.853** |
+| hit_rate@10 | 0.985 (98.5%) |
+| mrr | 0.645 |
+| mttc | 2.40 |
+| **technical_score** | **0.858** |
 
-These numbers are for the BM25 + soft-rank pipeline with LLM disabled/unavailable. To exercise LLM re-ranking during eval, export `GROQ_API_KEY` (or `GOOGLE_API_KEY`) before running the evaluator.
+These numbers are the **submitted** result: BM25 + soft-rank on all 200 public sessions, **LLM off**. Artifact: [`results/latest.json`](../results/latest.json) (`recommended_technical_score` 0.858051).
+
+### LLM mini-eval (not the submitted score)
+
+On the first **20** public sessions, the same pipeline with Groq re-ranking scored **0.865** (vs the BM25-only spine on that subset). That lift is why the ranker exists; it is **not** enabled for the full 200-session run because of Groq free-tier rate limits (~30 RPM, ~2 hours) and token cost. Reproduce the submitted 0.858 with keys unset (see `scripts/eval_full.sh`). To exercise LLM re-ranking on a short slice, export `GROQ_API_KEY` (or `GOOGLE_API_KEY`) and run `scripts/eval_mini.sh`.
 
 ## Scenarios & Simulator
 
@@ -67,12 +71,15 @@ See [data-guide.md](data-guide.md) for scenario distribution, simulator behavior
 ## Running the Evaluator
 
 ```bash
-# Full eval (200 sessions, outputs to results/latest.json)
-.venv/bin/python -m evaluator.local_evaluator
+# Submitted score: 200 sessions, LLM keys unset (0.858)
+bash scripts/eval_full.sh
 
-# With explicit paths (defaults shown)
+# Equivalent, with explicit paths (does not unset keys — use eval_full.sh to match 0.858)
 .venv/bin/python -m evaluator.local_evaluator \
   --catalog data/catalog.jsonl \
   --dataset data/public_set.jsonl \
   --output results/latest.json
+
+# Optional: 20-session LLM mini-eval (measured Groq composite 0.865)
+# export GROQ_API_KEY=... && bash scripts/eval_mini.sh
 ```

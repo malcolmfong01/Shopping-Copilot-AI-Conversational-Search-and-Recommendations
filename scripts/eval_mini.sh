@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Mini eval: first 20 sessions for fast iteration
-# ~1 min with Groq LLM, ~30s without
+# Mini eval: first 20 sessions for fast iteration.
+# Without an API key: BM25 + soft-rank only (~30s).
+# With GROQ_API_KEY set: LLM re-ranking (~1 min). Measured Groq mini-eval composite: 0.865.
+# That LLM lift is not used for the submitted 200-session score 0.858 (see README Limitations).
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

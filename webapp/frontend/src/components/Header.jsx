@@ -31,7 +31,7 @@ export default function Header({ turn, onNew, viewMode, onViewModeChange }) {
         </div>
       </div>
       <div className="header-right">
-        <span className="score-badge">Hit Rate 97% · 0.853 · 8× baseline</span>
+        <span className="score-badge">Hit Rate 98.5% · 0.858 · 8× baseline</span>
         {viewMode === 'product' && (
           <span className="turn-counter">Turn {turn}/10</span>
         )}
