@@ -47,7 +47,7 @@ def main():
     print(f"Loading catalog from {args.catalog}...")
     products = []
     asins = []
-    with open(args.catalog) as f:
+    with open(args.catalog, encoding="utf-8") as f:
         for line in f:
             p = json.loads(line)
             products.append(p)
@@ -68,7 +68,7 @@ def main():
     print(f"Saved embeddings: {embeddings_path} ({embeddings.shape})")
 
     index_path = output_dir / "asin_index.json"
-    with open(index_path, "w") as f:
+    with open(index_path, "w", encoding="utf-8") as f:
         json.dump(asins, f)
     print(f"Saved ASIN index: {index_path} ({len(asins)} entries)")
 

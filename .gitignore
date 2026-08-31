@@ -4,8 +4,9 @@ data/catalog.jsonl.gz
 data/public_set.jsonl
 data/checksums.sha256
 
-# Evaluation output
-results/
+# Evaluation output — only the submitted full-eval artifact may be kept
+results/*
+!results/latest.json
 results*.json
 
 # Precomputed embeddings
@@ -28,12 +29,17 @@ build/
 venv/
 env/
 
-# IDE
+# IDE / local tooling
 .vscode/
 .idea/
+.agents/
+.claude/
 *.swp
 *.swo
 *~
+
+# Local skill install metadata
+skills-lock.json
 
 # OS
 .DS_Store

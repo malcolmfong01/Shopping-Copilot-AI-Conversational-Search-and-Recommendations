@@ -38,7 +38,7 @@ The problem statement says "combining keyword, category, and vector similarity."
 - **Category/Structured**: Soft constraint scoring on material, color, budget, category
 - **Semantic**: LLM re-ranking (strictly more powerful than a 384-dim vector embedding)
 
-Dense vector retrieval (MiniLM + FAISS) is implemented but opt-in (`ENABLE_DENSE=1`). It was thoroughly evaluated and does not improve BM25 for this evaluator's constraint pattern. See [tasks/malcolm.md](../tasks/malcolm.md) for analysis.
+Dense vector retrieval (MiniLM + FAISS) is implemented but opt-in (`ENABLE_DENSE=1`). It was thoroughly evaluated and does not improve BM25 for this evaluator's constraint pattern. See [experiments.md](experiments.md) for analysis.
 
 ---
 

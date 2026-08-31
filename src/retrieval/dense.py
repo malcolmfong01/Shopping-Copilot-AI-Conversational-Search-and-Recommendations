@@ -10,7 +10,7 @@ MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 class DenseIndex:
     def __init__(self, embeddings_path: str, asin_index_path: str):
         self._embeddings = np.load(embeddings_path)
-        with open(asin_index_path) as f:
+        with open(asin_index_path, encoding="utf-8") as f:
             self._asins = json.load(f)
 
         dim = self._embeddings.shape[1]

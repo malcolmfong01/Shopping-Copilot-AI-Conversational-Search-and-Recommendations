@@ -1,14 +1,8 @@
-"""Attribute selection module. OWNED BY YANYOX.
+"""Attribute selection for the next clarifying question.
 
-Interface contract:
-- select_attribute() receives session state + candidate pool stats
-- Returns one of the allowed attribute strings
-
-The current implementation uses a priority-based heuristic:
-- Turn 1: always ask "category" (most discriminating for clothing)
-- Later turns: pick the attribute with highest candidate variance
-
-Yanyox can replace this with LLM-based selection for better results.
+select_attribute() chooses the most discriminating unasked attribute given
+candidate value distributions. Uses an LLM helper when available, otherwise
+heuristics.
 """
 
 import json

@@ -100,7 +100,7 @@ export const MAIN_LAYERS = [
       '10 products, possibly reordered',
       '— or the same 10 in retrieval order (bypass)',
     ].join('\n'),
-    techNote: 'Optional in practice, not optional in the code path: we always call it, then no-op on failure. Helps MRR when it works.',
+    techNote: 'Optional in practice, not optional in the code path: we always call it, then no-op on failure. Groq mini-eval (n=20) scored 0.865; the submitted 200-session run (0.858) leaves this off (token cost / rate limits).',
   },
   {
     id: 'ask',

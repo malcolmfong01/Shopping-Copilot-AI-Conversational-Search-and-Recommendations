@@ -1,72 +1,218 @@
-"""LLM-based re-ranking module. OWNED BY YANYOX.
+"""LLM-based candidate re-ranking and reply templates.
 
-Interface contract:
-- rank_candidates() receives top-20 products + full session context
-- Returns an ordered list of parent_asins (best first, max 10)
-- generate_message() produces a conversational reply
+rank_candidates() sends the top candidates plus session context to the LLM
+and returns ordered parent_asins (best first, max 10). Falls back to
+constraint-match order when the LLM is unavailable or returns invalid JSON.
 
-rank_candidates() calls the LLM with candidate descriptions + user context,
-falls back to retrieval order if LLM is unavailable or returns invalid JSON.
-generate_message() uses template strings (cosmetic only, not scored).
+generate_message() builds a short template reply (cosmetic; not scored).
 """
 
 import json
+import os
+import re
 
 from src.dialog.state import SessionState
-from src.llm_client import llm_call
+from src.llm_client import llm_call, _debug
 
 last_rank_meta: dict = {"used": False}
+
+
+def _extract_json_array(text: str | None) -> list[int] | None:
+    if not text:
+        return None
+
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.I)
+    match = re.search(r"\[[\s\S]*\]", cleaned)
+    if not match:
+        return None
+
+    try:
+        data = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+
+    if isinstance(data, list):
+        indices = [item for item in data if isinstance(item, int)]
+        if indices:
+            return indices
+    return None
+
+
+def _constraint_match_score(candidate: dict, state: SessionState) -> float:
+    """Score how many active constraint values appear in a candidate."""
+    if not state.constraints:
+        return 0.0
+
+    searchable_parts = [
+        candidate.get("title", ""),
+        candidate.get("store", ""),
+        candidate.get("categories", []),
+        candidate.get("features", []),
+        candidate.get("details", {}),
+        candidate.get("description", []),
+    ]
+
+    def values_from(part: object) -> list[object]:
+        if isinstance(part, dict):
+            return list(part.values())
+        if isinstance(part, (list, tuple, set)):
+            return list(part)
+        return [part]
+
+    searchable = " ".join(
+        str(value)
+        for part in searchable_parts
+        for value in values_from(part)
+        if value
+    ).lower()
+
+    matched = 0
+    total = 0
+    for value in state.constraints.values():
+        for part in str(value).split("|"):
+            tokens = re.findall(r"[a-z0-9]+", part.lower())
+            if not tokens:
+                continue
+            total += 1
+            if part.lower() in searchable:
+                matched += 1
+            elif sum(token in searchable for token in tokens) / len(tokens) >= 0.8:
+                matched += 1
+    return matched / total if total else 0.0
+
+
+def _constraint_ranked_candidates(candidates: list[dict], state: SessionState) -> list[str]:
+    ranked = sorted(
+        candidates,
+        key=lambda candidate: (
+            _constraint_match_score(candidate, state),
+            float(candidate.get("price", 0) or 0),
+        ),
+        reverse=True,
+    )
+    return [candidate["parent_asin"] for candidate in ranked[:10]]
 
 
 def rank_candidates(
     candidates: list[dict],
     state: SessionState,
 ) -> list[str]:
-    """Re-rank candidates using LLM. Returns ordered parent_asins (best first, max 10).
-
-    Args:
-        candidates: Top-20 products with full metadata from hybrid retrieval.
-        state: Full session context (constraints, history, profile).
-
-    Returns:
-        List of up to 10 parent_asin strings, best match first.
-    """
+    """Re-rank candidates using LLM. Returns ordered parent_asins (best first, max 10)."""
     if not candidates:
         return []
 
+    _debug(f"rank_candidates CALLED: candidates={len(candidates)}")
+
     candidate_descriptions = []
-    for i, c in enumerate(candidates[:20]):
-        desc = f"[{i}] {c.get('title', 'Unknown')} | {' '.join(c.get('categories', [])[:2])}"
-        if c.get("price"):
-            desc += f" | ${c['price']}"
-        candidate_descriptions.append(desc)
+    for i, candidate in enumerate(candidates[:20]):
+        title = str(candidate.get("title", "Unknown"))[:180]
+        categories = " ".join(str(value) for value in candidate.get("categories", [])[:2])
+        description = f"[{i}] {title} | {categories}"
+        if candidate.get("features"):
+            features = candidate["features"]
+            if isinstance(features, list):
+                features = ", ".join(str(value) for value in features[:4])
+            description += f" | features: {str(features)[:300]}"
+        if candidate.get("details"):
+            description += f" | details: {str(candidate['details'])[:300]}"
+        if candidate.get("price"):
+            description += f" | ${candidate['price']}"
+        candidate_descriptions.append(description)
 
     context = state.get_context_summary()
 
-    prompt = f"""You are a shopping assistant. Given the user's preferences and conversation context, rank these products by relevance. Return ONLY a JSON array of indices (0-based) in order of best match, max 10 items.
+    # Build constraint matching hints for the LLM
+    constraint_keys = list(state.constraints.keys())
+    if constraint_keys:
+        constraint_guidance = f"Match products against these user attributes first: {', '.join(constraint_keys)}. Products matching ALL constraints are best."
+    else:
+        constraint_guidance = "User has not stated specific constraints yet. Rank by general product quality and relevance."
 
-Context:
+    prompt = f"""You are reranking shopping candidates. GOAL: Put products that match the user's stated preferences as high as possible.
+
+TASK: Return a JSON array of candidate indices, ranked by how well each matches the user's preferences.
+
+CRITICAL RULES:
+- Return ONLY valid JSON array format: [0, 3, 7, 2]
+- No markdown fences, no prose, no explanations.
+- Use at most 10 indices from the candidates below (0-based).
+- Do NOT invent or repeat indices; each index appears at most once.
+
+RANKING STRATEGY (strict order):
+1. Tier 1 (best): Products matching ALL or most of the user's stated constraints.
+2. Tier 2: Products matching 3+ user constraints.
+3. Tier 3: Products matching 2 user constraints.
+4. Tier 4 (fallback): Products matching 1 or 0 constraints.
+
+Within each tier, prefer products with higher relevance (better title/category match).
+
+Constraint matching hint:
+{constraint_guidance}
+
+User conversation context:
 {context}
 
-Known preferences: {json.dumps(state.constraints)}
+User's stated preferences:
+{json.dumps(state.constraints, ensure_ascii=False)}
 
-Candidates:
+Candidates to rank (format: [index] title | categories | features):
 {chr(10).join(candidate_descriptions)}
 
-Return JSON array of indices only, e.g. [3, 0, 7, ...]"""
+Output: Return ONLY the JSON array. No other text."""
 
     global last_rank_meta
-    content = llm_call(prompt, max_tokens=200)
+    content = llm_call(prompt, max_tokens=600)
+    _debug(f"llm_call returned: {repr(content)[:500]}")
     if content:
-        try:
-            indices = json.loads(content)
-            last_rank_meta = {"used": True}
-            return [candidates[i]["parent_asin"] for i in indices if isinstance(i, int) and i < len(candidates)][:10]
-        except (json.JSONDecodeError, IndexError):
-            pass
+        indices = _extract_json_array(content)
+        if indices is not None:
+            result = [
+                candidates[index]["parent_asin"]
+                for index in indices
+                if 0 <= index < len(candidates)
+            ][:10]
+            if result:
+                model_result = list(result)
+                # Preserve the model's semantic ordering within each exact-match tier.
+                model_position = {asin: position for position, asin in enumerate(result)}
+                remaining = [
+                    candidate["parent_asin"]
+                    for candidate in candidates
+                    if candidate["parent_asin"] not in model_position
+                ]
+                result.extend(remaining)
+                result.sort(
+                    key=lambda asin: (
+                        _constraint_match_score(
+                            next(candidate for candidate in candidates if candidate["parent_asin"] == asin),
+                            state,
+                        ),
+                        -model_position.get(asin, len(model_position)),
+                    ),
+                    reverse=True,
+                )
+                result = result[:10]
+                last_rank_meta = {"used": True}
+                if os.environ.get("DEBUG_LLM") == "1":
+                    score_by_asin = {
+                        candidate["parent_asin"]: round(_constraint_match_score(candidate, state), 3)
+                        for candidate in candidates
+                    }
+                    _debug(f"MODEL ORDER: {model_result}")
+                    _debug(
+                        f"FINAL ORDER: {result} | CONSTRAINT SCORES: "
+                        f"{[score_by_asin[asin] for asin in result]}"
+                    )
+                    _debug(f"rank_candidates LLM SUCCESS: returned={len(result)}")
+                return result
 
     last_rank_meta = {"used": False}
-    return [c["parent_asin"] for c in candidates[:10]]
+    fallback = _constraint_ranked_candidates(candidates, state)
+    _debug(f"rank_candidates FALLBACK: constraint_match_order={fallback}")
+    return fallback
 
 
 def generate_message(
@@ -74,10 +220,7 @@ def generate_message(
     recommendations: list[dict],
     ask_attribute: str | None,
 ) -> str:
-    """Generate a conversational reply to the user.
-
-    Placeholder implementation. Yanyox replaces with LLM-generated responses.
-    """
+    """Generate a conversational reply to the user."""
     if not recommendations:
         msg = "Let me help you find the perfect item."
     else:

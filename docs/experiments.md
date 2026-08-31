@@ -20,8 +20,11 @@ Baseline (no retrieval optimization): **0.107**
 | 9 | Dense retrieval (MiniLM-L6-v2 + RRF) | 0.850 | -0.003 | **Disabled** (opt-in) |
 | 10 | Bug fixes: prefix strip, constraint key, full text match | 0.853 | +0.002 | Yes (keyword extract reverted) |
 | 11 | Include description field in soft-rank text matching | 0.853 | ~0 | Yes |
+| 12 | LLM re-ranking (Groq, n=20) | 0.865 (mini) | lift on 20 sessions | Optional — **off** for submitted 200-session run |
 
-**Final score: 0.853 (8.0x baseline)**
+**Submitted score (full 200, no LLM): 0.858 (8.0× baseline)**
+
+LLM re-ranking improved a 20-session mini-eval to **0.865**. It is not enabled for the submitted 200-session result because of token cost and Groq free-tier rate limits (~30 RPM, ~2 hours for a full LLM eval). Source: `results/latest.json`.
 
 ---
 
@@ -88,7 +91,6 @@ Baseline (no retrieval optimization): **0.107**
 - Best mini-eval score: 0.850 (vs BM25-only 0.853)
 - **Root cause:** evaluator generates literal substring constraints from product fields → BM25 is near-optimal by construction; dense confuses near-synonyms (cotton ≈ polyester)
 - Code kept for architecture writeup. Opt-in via `ENABLE_DENSE=1`.
-- Full analysis: 17 failure modes documented in `tasks/malcolm.md`
 
 ### 10. Bug Fixes (3 kept, 1 reverted)
 
@@ -104,6 +106,28 @@ Baseline (no retrieval optimization): **0.107**
 - Added to `_full_searchable_text()` to match evaluator's `searchable_text()`.
 - Mini-eval: no change on 20-session set (description-dependent products not in mini set). Protects against misses on the 800-session private eval.
 
+### 12. LLM Re-ranking (Groq)
+
+- Module: `src/ranking/llm_ranker.py` via `src/llm_client.py`
+- Model path: Groq when `GROQ_API_KEY` is set (preferred); Gemini when only `GOOGLE_API_KEY` is set
+- Behavior: re-rank top-20 → top-10 JSON indices; on failure, constraint-match fallback (exact matches first)
+- Debug: `DEBUG_LLM=1`
+- Mini-eval (n=20) with Groq: **0.865** (lift over the BM25-only spine on the same 20 sessions)
+- **Submitted run stays BM25 + soft-rank at 0.858** on the full 200-session public eval (`results/latest.json`). LLM re-ranking is left off for that run: Groq free-tier ~30 RPM and token cost make a 200-session LLM eval ~2 hours, which we did not spend for the scored submission.
+
+### Dense retrieval — why it stays opt-in
+
+Ship BM25-only for scoring (`ENABLE_DENSE` unset). MiniLM + FAISS hybrid peaked at **0.850** vs BM25 **0.853** on mini-eval after tuning (RRF K=10, α=0.75/0.25, depth=50, conditional skip).
+
+Root causes (summary):
+1. Evaluator constraints are literal substrings → BM25 is near-optimal by construction
+2. Dense doc text omits details/description that FTS indexes
+3. Keyword `build_query()` is hostile to sentence encoders
+4. Soft-rank after fusion can erase dense ordering gains
+5. Near-duplicate catalog items are not separable by 384-d cosine alone
+
+Full narrative of reverted experiments remains in sections 6–9 above. Dense code stays for architecture explanation; do not enable for demos or scoring.
+
 ---
 
 ## Remaining 6 Misses (Analysis)
@@ -111,4 +135,4 @@ Baseline (no retrieval optimization): **0.107**
 All remaining misses are deep-BM25 failures with ultra-generic constraints:
 - "polyester + Imported + Button closure" matches 40+ products
 - Target product is indistinguishable from dozens of similar items via text alone
-- **Solution needed:** LLM re-ranker (Yanyox's task) using semantic understanding of user intent
+- LLM re-ranking is the intended way to break those near-duplicates (0.865 on n=20). It is not enabled in the submitted 200-session score (0.858) because of token cost and rate limits.
