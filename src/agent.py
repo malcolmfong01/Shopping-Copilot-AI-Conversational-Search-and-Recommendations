@@ -84,8 +84,8 @@ class Agent:
         turn_prompt_tokens = 0
         turn_completion_tokens = 0
 
-        # Pass top-10 to LLM for re-ranking; remaining 40 are fallback
-        ranked_asins = rank_candidates(candidates[:10], state)
+        # Pass top-20 to LLM for re-ranking; remaining candidates are fallback
+        ranked_asins = rank_candidates(candidates[:20], state)
         turn_prompt_tokens += last_usage.get("prompt_tokens", 0)
         turn_completion_tokens += last_usage.get("completion_tokens", 0)
 

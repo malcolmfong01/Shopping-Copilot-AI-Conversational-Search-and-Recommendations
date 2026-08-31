@@ -44,6 +44,48 @@ def _extract_json_array(text: str | None) -> list[int] | None:
     return None
 
 
+def _constraint_match_score(candidate: dict, state: SessionState) -> float:
+    """Score how many active constraint values appear in a candidate."""
+    if not state.constraints:
+        return 0.0
+
+    searchable_parts = [
+        candidate.get("title", ""),
+        candidate.get("store", ""),
+        candidate.get("categories", []),
+        candidate.get("features", []),
+        candidate.get("details", {}),
+        candidate.get("description", []),
+    ]
+    def values_from(part: object) -> list[object]:
+        if isinstance(part, dict):
+            return list(part.values())
+        if isinstance(part, (list, tuple, set)):
+            return list(part)
+        return [part]
+
+    searchable = " ".join(
+        str(value)
+        for part in searchable_parts
+        for value in values_from(part)
+        if value
+    ).lower()
+
+    matched = 0
+    total = 0
+    for value in state.constraints.values():
+        for part in str(value).split("|"):
+            tokens = re.findall(r"[a-z0-9]+", part.lower())
+            if not tokens:
+                continue
+            total += 1
+            if part.lower() in searchable:
+                matched += 1
+            elif sum(token in searchable for token in tokens) / len(tokens) >= 0.8:
+                matched += 1
+    return matched / total if total else 0.0
+
+
 def rank_candidates(
     candidates: list[dict],
     state: SessionState,
@@ -125,8 +167,38 @@ Output: Return ONLY the JSON array. No other text."""
                 if 0 <= index < len(candidates)
             ][:10]
             if result:
+                model_result = list(result)
+                # Preserve the model's semantic ordering within each exact-match tier.
+                model_position = {asin: position for position, asin in enumerate(result)}
+                remaining = [
+                    candidate["parent_asin"]
+                    for candidate in candidates
+                    if candidate["parent_asin"] not in model_position
+                ]
+                result.extend(remaining)
+                result.sort(
+                    key=lambda asin: (
+                        _constraint_match_score(
+                            next(candidate for candidate in candidates if candidate["parent_asin"] == asin),
+                            state,
+                        ),
+                        -model_position.get(asin, len(model_position)),
+                    ),
+                    reverse=True,
+                )
+                result = result[:10]
                 last_rank_meta = {"used": True}
                 if os.environ.get("DEBUG_LLM") == "1":
+                    score_by_asin = {
+                        candidate["parent_asin"]: round(_constraint_match_score(candidate, state), 3)
+                        for candidate in candidates
+                    }
+                    print(f"### MODEL ORDER: {model_result}", flush=True)
+                    print(
+                        f"### FINAL ORDER: {result} | CONSTRAINT SCORES: "
+                        f"{[score_by_asin[asin] for asin in result]}",
+                        flush=True,
+                    )
                     print(f"### rank_candidates LLM SUCCESS: returned={len(result)}", flush=True)
                 return result
 
