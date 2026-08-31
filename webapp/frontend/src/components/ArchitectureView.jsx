@@ -241,22 +241,24 @@ export default function ArchitectureView({ pipeline, denseAvailable }) {
                 </div>
 
                 {isBm25 && showDensePath && (
-                  <div className="arch-branch" role="group" aria-label="Optional dense retrieval path">
-                    <div className="arch-branch-label">Optional — evaluated, not shipped</div>
+                  <>
                     <Arrow dashed />
-                    {DENSE_LAYERS.map((dl, di) => (
-                      <div key={dl.id} className="arch-node" role="listitem">
-                        {di > 0 && <Arrow dashed />}
-                        <LayerCard
-                          layer={dl}
-                          selected={activeSelectedId === dl.id}
-                          onSelect={setSelectedId}
-                          chip={chip(dl.id)}
-                          status={statusFor(dl.id)}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                    <div className="arch-branch" role="group" aria-label="Optional dense retrieval path">
+                      <div className="arch-branch-label">Optional — evaluated, not shipped</div>
+                      {DENSE_LAYERS.map((dl, di) => (
+                        <div key={dl.id} className="arch-node" role="listitem">
+                          {di > 0 && <Arrow dashed />}
+                          <LayerCard
+                            layer={dl}
+                            selected={activeSelectedId === dl.id}
+                            onSelect={setSelectedId}
+                            chip={chip(dl.id)}
+                            status={statusFor(dl.id)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             )

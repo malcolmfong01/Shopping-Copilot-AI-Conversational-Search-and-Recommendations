@@ -244,7 +244,7 @@
 }
 
 .arch-branch {
-  margin: 4px 0 4px 20px;
+  margin: 4px 0;
   padding: 12px 14px;
   border: 2px dashed rgba(251, 191, 36, 0.45);
   border-radius: var(--radius);
@@ -256,7 +256,7 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--warning);
-  margin-bottom: 4px;
+  margin-bottom: 10px;
 }
 
 .arch-detail {
