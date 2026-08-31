@@ -57,6 +57,7 @@ def _constraint_match_score(candidate: dict, state: SessionState) -> float:
         candidate.get("details", {}),
         candidate.get("description", []),
     ]
+
     def values_from(part: object) -> list[object]:
         if isinstance(part, dict):
             return list(part.values())
@@ -84,6 +85,18 @@ def _constraint_match_score(candidate: dict, state: SessionState) -> float:
             elif sum(token in searchable for token in tokens) / len(tokens) >= 0.8:
                 matched += 1
     return matched / total if total else 0.0
+
+
+def _constraint_ranked_candidates(candidates: list[dict], state: SessionState) -> list[str]:
+    ranked = sorted(
+        candidates,
+        key=lambda candidate: (
+            _constraint_match_score(candidate, state),
+            float(candidate.get("price", 0) or 0),
+        ),
+        reverse=True,
+    )
+    return [candidate["parent_asin"] for candidate in ranked[:10]]
 
 
 def rank_candidates(
@@ -203,9 +216,10 @@ Output: Return ONLY the JSON array. No other text."""
                 return result
 
     last_rank_meta = {"used": False}
+    fallback = _constraint_ranked_candidates(candidates, state)
     if os.environ.get("DEBUG_LLM") == "1":
-        print("### rank_candidates FALLBACK: retrieval order", flush=True)
-    return [candidate["parent_asin"] for candidate in candidates[:10]]
+        print(f"### rank_candidates FALLBACK: constraint_match_order={fallback}", flush=True)
+    return fallback
 
 
 def generate_message(
