@@ -1,4 +1,4 @@
-"""Provider-agnostic LLM client. Supports Google Gemini (free) and Groq (free).
+"""Provider-agnostic LLM client. Supports Groq and Google Gemini.
 
 Usage:
     from src.llm_client import llm_call
@@ -6,10 +6,14 @@ Usage:
     response = llm_call("Your prompt here", max_tokens=200)
 
 Set one of these environment variables (checked in this order):
-    GOOGLE_API_KEY=...         (Google Gemini Flash — primary, higher rate limits)
-    GROQ_API_KEY=gsk_...       (Groq Llama 3.3 70B — fallback)
+    GROQ_API_KEY=gsk_...       (Groq — preferred when set)
+    GOOGLE_API_KEY=...         (Google Gemini — used if Groq key is absent)
 
-If neither is set, returns None (modules fall back to heuristics).
+If neither is set, returns None (callers fall back to heuristics).
+
+Optional:
+    DEBUG_LLM=1                (print provider call diagnostics)
+    GROQ_REASONING_EFFORT=...  (low|medium|high; default medium)
 """
 
 import os
